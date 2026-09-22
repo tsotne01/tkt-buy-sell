@@ -23,7 +23,8 @@ export class AuthController {
   }
 
   @GrpcMethod(GRPC_SERVICES.AUTH_SERVICE, 'GetUserProfile')
-  getUserProfile(data: { user_id: string }) {
-    return this.authService.getUserProfile(data.user_id);
+  async getUserProfile(data: any) {
+    const userId = data.userId || data.user_id;
+    return this.authService.getUserProfile(userId);
   }
 }

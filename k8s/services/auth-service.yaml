@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: auth-service
-          image: tkt-auth-service:v2
+          image: tkt-auth-service:v3
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50051
@@ -25,6 +25,16 @@ spec:
               value: "0.0.0.0:50051"
             - name: JWT_SECRET
               value: "tkt-super-secret-key-2026"
+            - name: POSTGRES_HOST
+              value: "postgres"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              value: "postgres"
+            - name: POSTGRES_DB
+              value: "ticketing"
 ---
 apiVersion: v1
 kind: Service

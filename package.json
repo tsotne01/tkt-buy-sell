@@ -24,8 +24,14 @@
     "infra:down": "docker compose -f docker-compose.infra.yml down"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
+    "@types/pg": "^8.23.1",
     "concurrently": "^9.1.0",
-    "rimraf": "^6.0.1"
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "@nestjs/typeorm": "^12.0.1",
+    "pg": "^8.23.0",
+    "typeorm": "^1.1.1"
   }
 }

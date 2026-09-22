@@ -1,48 +1,50 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
+import { User } from './entities/user.entity';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'tkt-super-secret-key-2026';
 
-export interface UserEntity {
-  id: string;
-  email: string;
-  passwordHash: string;
-  name: string;
-  role: string;
-  createdAt: string;
-}
-
 @Injectable()
-export class AuthService {
-  // In-memory persistent state for fast dev, easily connected to Postgres
-  private users: Map<string, UserEntity> = new Map();
+export class AuthService implements OnModuleInit {
+  private readonly logger = new Logger(AuthService.name);
 
-  constructor() {
-    // Seed initial demo users
-    const demoPasswordHash = bcrypt.hashSync('password123', 10);
-    const demoBuyer: UserEntity = {
-      id: 'usr_buyer_1',
-      email: 'buyer@example.com',
-      passwordHash: demoPasswordHash,
-      name: 'Alice Buyer',
-      role: 'BUYER',
-      createdAt: new Date().toISOString(),
-    };
-    const demoSeller: UserEntity = {
-      id: 'usr_seller_1',
-      email: 'seller@example.com',
-      passwordHash: demoPasswordHash,
-      name: 'Bob Seller',
-      role: 'SELLER',
-      createdAt: new Date().toISOString(),
-    };
-    this.users.set(demoBuyer.email, demoBuyer);
-    this.users.set(demoSeller.email, demoSeller);
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>
+  ) {}
+
+  async onModuleInit() {
+    // Seed initial users if table is empty
+    const count = await this.userRepo.count();
+    if (count === 0) {
+      this.logger.log('Seeding demo users into PostgreSQL users table...');
+      const demoPasswordHash = bcrypt.hashSync('password123', 10);
+      await this.userRepo.save([
+        {
+          id: 'usr_buyer_1',
+          email: 'buyer@example.com',
+          passwordHash: demoPasswordHash,
+          name: 'Alice Buyer',
+          role: 'BUYER',
+        },
+        {
+          id: 'usr_seller_1',
+          email: 'seller@example.com',
+          passwordHash: demoPasswordHash,
+          name: 'Bob Seller',
+          role: 'SELLER',
+        },
+      ]);
+      this.logger.log('Demo users successfully seeded in PostgreSQL.');
+    }
   }
 
   async register(data: { email: string; password: string; name: string; role?: string }) {
-    if (this.users.has(data.email)) {
+    const existing = await this.userRepo.findOneBy({ email: data.email });
+    if (existing) {
       return {
         success: false,
         error_message: 'User with this email already exists',
@@ -57,16 +59,13 @@ export class AuthService {
     const id = `usr_${Date.now()}`;
     const passwordHash = await bcrypt.hash(data.password, 10);
     const role = data.role || 'BUYER';
-    const newUser: UserEntity = {
+    const newUser = await this.userRepo.save({
       id,
       email: data.email,
       passwordHash,
       name: data.name,
       role,
-      createdAt: new Date().toISOString(),
-    };
-
-    this.users.set(data.email, newUser);
+    });
 
     const token = jwt.sign(
       { userId: newUser.id, email: newUser.email, role: newUser.role },
@@ -86,7 +85,7 @@ export class AuthService {
   }
 
   async login(data: { email: string; password: string }) {
-    const user = this.users.get(data.email);
+    const user = await this.userRepo.findOneBy({ email: data.email });
     if (!user) {
       return {
         success: false,
@@ -152,24 +151,24 @@ export class AuthService {
     }
   }
 
-  getUserProfile(userId: string) {
-    for (const user of this.users.values()) {
-      if (user.id === userId) {
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          created_at: user.createdAt,
-        };
-      }
+  async getUserProfile(userId: string) {
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) {
+      return {
+        id: '',
+        email: '',
+        name: '',
+        role: '',
+        created_at: '',
+      };
     }
+
     return {
-      id: '',
-      email: '',
-      name: '',
-      role: '',
-      created_at: '',
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      created_at: user.createdAt.toISOString(),
     };
   }
 }
