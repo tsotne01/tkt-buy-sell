@@ -1,39 +1,26 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, LessThanOrEqual } from 'typeorm';
 import Redis from 'ioredis';
 import { TicketStatus } from '@tkt/common';
-
-export interface TicketEntity {
-  id: string;
-  event_id: string;
-  section: string;
-  row: string;
-  seat_number: number;
-  price: number;
-  status: TicketStatus;
-  held_by_user_id: string;
-  hold_expires_at: number;
-  is_resale: boolean;
-  seller_id: string;
-}
+import { Ticket } from './entities/ticket.entity';
 
 @Injectable()
 export class InventoryService implements OnModuleInit {
   private readonly logger = new Logger(InventoryService.name);
   private redisClient: Redis | null = null;
-  private tickets: Map<string, TicketEntity> = new Map();
 
-  // In-memory fallback TTL store if Redis is connecting/unavailable locally
-  private memoryHolds: Map<string, { userId: string; expiresAt: number }> = new Map();
-
-  constructor() {
+  constructor(
+    @InjectRepository(Ticket)
+    private readonly ticketRepo: Repository<Ticket>
+  ) {
     this.initRedis();
-    this.seedTickets();
   }
 
-  onModuleInit() {
-    // Also ensured on lifecycle
-    if (this.tickets.size === 0) {
-      this.seedTickets();
+  async onModuleInit() {
+    const count = await this.ticketRepo.count();
+    if (count === 0) {
+      await this.seedTickets();
     }
   }
 
@@ -53,15 +40,18 @@ export class InventoryService implements OnModuleInit {
       this.redisClient.connect().then(() => {
         this.logger.log(`Connected to Redis at ${redisHost}:${redisPort}`);
       }).catch((err) => {
-        this.logger.warn(`Redis unavailable (${err.message}). Using resilient in-memory TTL lock.`);
+        this.logger.warn(`Redis unavailable (${err.message}).`);
         this.redisClient = null;
       });
     } catch {
-      this.logger.warn('Failed to initialize Redis client. Falling back to in-memory store.');
+      this.logger.warn('Failed to initialize Redis client.');
     }
   }
 
-  private seedTickets() {
+  private async seedTickets() {
+    this.logger.log('Seeding tickets into PostgreSQL tickets table...');
+    const ticketsToSeed: Partial<Ticket>[] = [];
+
     // Generate seats for evt_1 (Coldplay at Wembley)
     const sections = ['VIP Lower', 'Section 102', 'General Standing'];
     let counter = 1;
@@ -71,7 +61,7 @@ export class InventoryService implements OnModuleInit {
         for (let s = 1; s <= 6; s++) {
           const id = `tkt_evt1_${counter++}`;
           const price = section === 'VIP Lower' ? 180 : section === 'Section 102' ? 110 : 85;
-          this.tickets.set(id, {
+          ticketsToSeed.push({
             id,
             event_id: 'evt_1',
             section,
@@ -89,7 +79,7 @@ export class InventoryService implements OnModuleInit {
     }
 
     // Seed one resale ticket for demonstration
-    const resaleTicket: TicketEntity = {
+    ticketsToSeed.push({
       id: 'tkt_evt1_resale_99',
       event_id: 'evt_1',
       section: 'VIP Lower',
@@ -101,15 +91,14 @@ export class InventoryService implements OnModuleInit {
       hold_expires_at: 0,
       is_resale: true,
       seller_id: 'usr_seller_1',
-    };
-    this.tickets.set(resaleTicket.id, resaleTicket);
+    });
 
     // Also seed a few tickets for evt_2, evt_3, evt_4
     const otherEvents = ['evt_2', 'evt_3', 'evt_4'];
     for (const evtId of otherEvents) {
       for (let s = 1; s <= 10; s++) {
         const id = `tkt_${evtId}_${s}`;
-        this.tickets.set(id, {
+        ticketsToSeed.push({
           id,
           event_id: evtId,
           section: 'Standard Area',
@@ -124,22 +113,23 @@ export class InventoryService implements OnModuleInit {
         });
       }
     }
+
+    await this.ticketRepo.save(ticketsToSeed);
+    this.logger.log(`Successfully seeded ${ticketsToSeed.length} tickets in PostgreSQL.`);
   }
 
-  getTicketsForEvent(eventId: string) {
-    this.cleanupExpiredHolds();
-    const result: TicketEntity[] = [];
-    for (const ticket of this.tickets.values()) {
-      if (ticket.event_id === eventId) {
-        result.push(ticket);
-      }
-    }
-    return { tickets: result };
+  async getTicketsForEvent(eventId: string) {
+    await this.cleanupExpiredHolds();
+    const tickets = await this.ticketRepo.find({
+      where: { event_id: eventId },
+      order: { section: 'ASC', row: 'ASC', seat_number: 'ASC' },
+    });
+    return { tickets };
   }
 
   async reserveTicketHold(ticketId: string, userId: string, holdSeconds = 600) {
-    this.cleanupExpiredHolds();
-    const ticket = this.tickets.get(ticketId);
+    await this.cleanupExpiredHolds();
+    const ticket = await this.ticketRepo.findOneBy({ id: ticketId });
 
     if (!ticket) {
       return {
@@ -175,13 +165,12 @@ export class InventoryService implements OnModuleInit {
           };
         }
       } catch (err: any) {
-        this.logger.warn(`Redis lock error, falling back to memory: ${err.message}`);
+        this.logger.warn(`Redis lock error: ${err.message}`);
       }
     }
 
-    // Check memory lock
-    const existingHold = this.memoryHolds.get(ticketId);
-    if (existingHold && existingHold.expiresAt > Date.now() && existingHold.userId !== userId) {
+    // Check if held by another user in DB
+    if (ticket.status === TicketStatus.HELD && ticket.hold_expires_at > Date.now() && ticket.held_by_user_id !== userId) {
       return {
         success: false,
         ticket_id: ticketId,
@@ -190,13 +179,13 @@ export class InventoryService implements OnModuleInit {
       };
     }
 
-    // Acquire hold
-    this.memoryHolds.set(ticketId, { userId, expiresAt });
+    // Acquire hold and persist in PostgreSQL
     ticket.status = TicketStatus.HELD;
     ticket.held_by_user_id = userId;
     ticket.hold_expires_at = expiresAt;
+    await this.ticketRepo.save(ticket);
 
-    this.logger.log(`Ticket ${ticketId} reserved for user ${userId} until ${new Date(expiresAt).toISOString()}`);
+    this.logger.log(`Ticket ${ticketId} reserved in DB for user ${userId} until ${new Date(expiresAt).toISOString()}`);
 
     return {
       success: true,
@@ -207,7 +196,7 @@ export class InventoryService implements OnModuleInit {
   }
 
   async releaseTicketHold(ticketId: string, userId: string) {
-    const ticket = this.tickets.get(ticketId);
+    const ticket = await this.ticketRepo.findOneBy({ id: ticketId });
     if (!ticket) {
       return { success: false, ticket_id: ticketId, message: 'Ticket not found' };
     }
@@ -221,19 +210,19 @@ export class InventoryService implements OnModuleInit {
       }
     }
 
-    this.memoryHolds.delete(ticketId);
     if (ticket.status === TicketStatus.HELD) {
       ticket.status = TicketStatus.AVAILABLE;
       ticket.held_by_user_id = '';
       ticket.hold_expires_at = 0;
-      this.logger.log(`Ticket ${ticketId} hold released and back to AVAILABLE.`);
+      await this.ticketRepo.save(ticket);
+      this.logger.log(`Ticket ${ticketId} hold released in DB and back to AVAILABLE.`);
     }
 
     return { success: true, ticket_id: ticketId, message: 'Hold released successfully' };
   }
 
-  confirmTicketSold(ticketId: string, userId: string, orderId: string) {
-    const ticket = this.tickets.get(ticketId);
+  async confirmTicketSold(ticketId: string, userId: string, orderId: string) {
+    const ticket = await this.ticketRepo.findOneBy({ id: ticketId });
     if (!ticket) {
       return { success: false, ticket_id: ticketId, qr_code: '' };
     }
@@ -241,7 +230,7 @@ export class InventoryService implements OnModuleInit {
     ticket.status = TicketStatus.SOLD;
     ticket.held_by_user_id = userId;
     ticket.hold_expires_at = 0;
-    this.memoryHolds.delete(ticketId);
+    await this.ticketRepo.save(ticket);
 
     if (this.redisClient) {
       this.redisClient.del(`ticket:hold:${ticketId}`).catch(() => {});
@@ -249,7 +238,7 @@ export class InventoryService implements OnModuleInit {
 
     // Mock secure dynamic QR Code payload (can be validated at venue entrance)
     const qrCode = `TKT-${ticket.event_id}-${ticket.id}-${orderId}-${Date.now()}`;
-    this.logger.log(`Ticket ${ticketId} officially SOLD to user ${userId} for order ${orderId}!`);
+    this.logger.log(`Ticket ${ticketId} officially SOLD in DB to user ${userId} for order ${orderId}!`);
 
     return {
       success: true,
@@ -258,36 +247,46 @@ export class InventoryService implements OnModuleInit {
     };
   }
 
-  listResaleTicket(ticketId: string, sellerId: string, resalePrice: number): TicketEntity {
-    const ticket = this.tickets.get(ticketId);
+  async listResaleTicket(ticketId: string, sellerId: string, resalePrice: number): Promise<Ticket> {
+    const ticket = await this.ticketRepo.findOneBy({ id: ticketId });
     if (!ticket) {
       throw new Error('Ticket not found');
     }
 
     ticket.is_resale = true;
     ticket.seller_id = sellerId;
-    ticket.price = resalePrice;
+    ticket.price = Number(resalePrice);
     ticket.status = TicketStatus.AVAILABLE;
     ticket.held_by_user_id = '';
     ticket.hold_expires_at = 0;
 
-    this.logger.log(`Ticket ${ticketId} listed for P2P resale by ${sellerId} at $${resalePrice}`);
+    await this.ticketRepo.save(ticket);
+    this.logger.log(`Ticket ${ticketId} listed for P2P resale in DB by ${sellerId} at $${resalePrice}`);
     return ticket;
   }
 
-  private cleanupExpiredHolds() {
+  private async cleanupExpiredHolds() {
     const now = Date.now();
-    for (const [ticketId, hold] of this.memoryHolds.entries()) {
-      if (hold.expiresAt <= now) {
-        this.memoryHolds.delete(ticketId);
-        const ticket = this.tickets.get(ticketId);
-        if (ticket && ticket.status === TicketStatus.HELD) {
+    const expiredTickets = await this.ticketRepo.find({
+      where: {
+        status: TicketStatus.HELD,
+        hold_expires_at: LessThanOrEqual(now),
+      },
+    });
+
+    if (expiredTickets.length > 0) {
+      for (const ticket of expiredTickets) {
+        if (ticket.hold_expires_at > 0) {
           ticket.status = TicketStatus.AVAILABLE;
           ticket.held_by_user_id = '';
           ticket.hold_expires_at = 0;
-          this.logger.log(`Hold on ticket ${ticketId} expired. Seat released to AVAILABLE.`);
+          if (this.redisClient) {
+            this.redisClient.del(`ticket:hold:${ticket.id}`).catch(() => {});
+          }
+          this.logger.log(`Hold on ticket ${ticket.id} expired. Released to AVAILABLE in DB.`);
         }
       }
+      await this.ticketRepo.save(expiredTickets);
     }
   }
 }

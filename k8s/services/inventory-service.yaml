@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: inventory-service
-          image: tkt-inventory-service:v5
+          image: tkt-inventory-service:v6
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50053
@@ -29,6 +29,16 @@ spec:
               value: "6379"
             - name: RABBITMQ_URL
               value: "amqp://guest:guest@rabbitmq:5672"
+            - name: POSTGRES_HOST
+              value: "postgres"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              value: "postgres"
+            - name: POSTGRES_DB
+              value: "ticketing"
 ---
 apiVersion: v1
 kind: Service
