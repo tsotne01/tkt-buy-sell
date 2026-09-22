@@ -128,7 +128,8 @@ export class ElasticsearchService implements OnModuleInit {
   async searchEvents(query: { search?: string; category?: string; page?: number; limit?: number }) {
     const page = Math.max(1, query.page || 1);
     const limit = Math.max(1, query.limit || 20);
-    const from = (page - 1) * limit;
+    // Guard from offset so it never exceeds Elasticsearch max_result_window (10,000)
+    const from = Math.min((page - 1) * limit, Math.max(0, 10000 - limit));
 
     const mustClauses: any[] = [];
     const filterClauses: any[] = [];
@@ -145,7 +146,7 @@ export class ElasticsearchService implements OnModuleInit {
       mustClauses.push({ match_all: {} });
     }
 
-    if (query.category && query.category.trim() !== '' && query.category.toLowerCase() !== 'all') {
+    if (query.category && query.category.trim() !== '' && query.category !== 'All') {
       filterClauses.push({
         term: { category: query.category.trim() },
       });
@@ -155,6 +156,7 @@ export class ElasticsearchService implements OnModuleInit {
       index: this.indexName,
       from,
       size: limit,
+      track_total_hits: true,
       query: {
         bool: {
           must: mustClauses,

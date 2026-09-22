@@ -4,7 +4,7 @@ import {
   Ticket, Calendar, MapPin, Search, ShieldCheck, 
   Clock, CheckCircle2, AlertCircle, ArrowRight, 
   RefreshCw, LogIn, LogOut, User, Lock, Mail, Sparkles,
-  Eye, EyeOff, UserPlus, CreditCard, ChevronRight, Check, X, 
+  Eye, EyeOff, UserPlus, CreditCard, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, Check, X, 
   Shield, Smartphone, QrCode, Download, Info, Building, 
   ArrowUpRight, Music, Trophy, Film, PartyPopper, HeartHandshake,
   Layers, CheckCircle
@@ -78,6 +78,8 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(12);
   const [searchMeta, setSearchMeta] = useState<{ tookMs?: number; total: number; isSearching: boolean }>({
     total: 1000000,
     isSearching: false,
@@ -304,7 +306,7 @@ export default function App() {
     loadResaleTickets();
   }, []);
 
-  // Debounced search query
+  // Debounced search query with server pagination
   useEffect(() => {
     const timer = setTimeout(async () => {
       setSearchMeta((prev) => ({ ...prev, isSearching: true }));
@@ -313,6 +315,8 @@ export default function App() {
         const params = new URLSearchParams();
         if (searchQuery.trim()) params.append('search', searchQuery.trim());
         if (selectedCategory && selectedCategory !== 'All') params.append('category', selectedCategory);
+        params.append('page', String(currentPage));
+        params.append('limit', String(pageSize));
 
         const res = await fetch(`/api/events?${params.toString()}`);
         if (res.ok) {
@@ -320,7 +324,7 @@ export default function App() {
           if (Array.isArray(data.events)) {
             setEvents(data.events);
             const took = Math.round(performance.now() - startTime);
-            setSearchMeta({ tookMs: took, total: data.total || data.events.length, isSearching: false });
+            setSearchMeta({ tookMs: took, total: data.total !== undefined ? data.total : data.events.length, isSearching: false });
             return;
           }
         }
@@ -331,7 +335,7 @@ export default function App() {
     }, 220);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, currentPage, pageSize]);
 
   const handleBuyFromFan = async (ticket: TicketItem) => {
     const ev = events.find((e) => e.id === ticket.event_id) || events[0];
@@ -935,7 +939,10 @@ export default function App() {
                   <Input
                     type="text"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setCurrentPage(1);
+                    }}
                     placeholder="Search by artist, team, venue, or city (e.g., 'Coldplay', 'Wembley', 'Zimmer')..."
                     icon={<Search className="w-4 h-4 text-slate-400" />}
                     rightElement={
@@ -943,7 +950,10 @@ export default function App() {
                         <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
                       ) : searchQuery ? (
                         <button
-                          onClick={() => setSearchQuery('')}
+                          onClick={() => {
+                            setSearchQuery('');
+                            setCurrentPage(1);
+                          }}
                           className="text-slate-500 hover:text-slate-300"
                         >
                           <X className="w-4 h-4" />
@@ -967,7 +977,10 @@ export default function App() {
                     return (
                       <button
                         key={cat.value}
-                        onClick={() => setSelectedCategory(cat.value)}
+                        onClick={() => {
+                          setSelectedCategory(cat.value);
+                          setCurrentPage(1);
+                        }}
                         className={cn(
                           'inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 border',
                           isSelected
@@ -1058,6 +1071,128 @@ export default function App() {
                 </Card>
               ))}
             </div>
+
+            {/* Pagination Controls */}
+            {searchMeta.total > 0 && (
+              <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-800/80 pt-6">
+                <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-4 text-xs text-slate-400">
+                  <span>
+                    Showing <span className="text-white font-semibold">{(currentPage - 1) * pageSize + 1}</span>–
+                    <span className="text-white font-semibold">
+                      {Math.min(currentPage * pageSize, searchMeta.total)}
+                    </span>{' '}
+                    of <span className="text-emerald-400 font-semibold">{searchMeta.total.toLocaleString()}</span> events
+                  </span>
+
+                  <div className="flex items-center space-x-1.5 sm:pl-3 sm:border-l border-slate-800">
+                    <span className="text-slate-500">Per page:</span>
+                    {[12, 24, 48].map((size) => (
+                      <button
+                        key={size}
+                        onClick={() => {
+                          setPageSize(size);
+                          setCurrentPage(1);
+                        }}
+                        className={cn(
+                          'px-2 py-0.5 rounded text-[11px] font-medium transition',
+                          pageSize === size
+                            ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                        )}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Page Navigation */}
+                <div className="flex items-center space-x-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage <= 1}
+                    onClick={() => {
+                      setCurrentPage(1);
+                      window.scrollTo({ top: 180, behavior: 'smooth' });
+                    }}
+                    className="h-8 w-8 p-0"
+                    title="First Page"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage <= 1}
+                    onClick={() => {
+                      setCurrentPage((p) => Math.max(1, p - 1));
+                      window.scrollTo({ top: 180, behavior: 'smooth' });
+                    }}
+                    className="h-8 px-2.5 text-xs"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+                    <span>Prev</span>
+                  </Button>
+
+                  {/* Dynamic Page Number Buttons (Window of 5) */}
+                  {(() => {
+                    const maxAllowedPages = Math.ceil(Math.min(searchMeta.total, 10000) / pageSize);
+                    let startPage = Math.max(1, currentPage - 2);
+                    if (startPage + 4 > maxAllowedPages) {
+                      startPage = Math.max(1, maxAllowedPages - 4);
+                    }
+                    const pagesToRender: number[] = [];
+                    for (let i = 0; i < 5 && startPage + i <= maxAllowedPages; i++) {
+                      pagesToRender.push(startPage + i);
+                    }
+
+                    return pagesToRender.map((p) => (
+                      <Button
+                        key={p}
+                        variant={currentPage === p ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setCurrentPage(p);
+                          window.scrollTo({ top: 180, behavior: 'smooth' });
+                        }}
+                        className={cn('h-8 w-8 p-0 text-xs font-semibold', currentPage === p && 'shadow-md shadow-emerald-500/20')}
+                      >
+                        {p}
+                      </Button>
+                    ));
+                  })()}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= Math.ceil(Math.min(searchMeta.total, 10000) / pageSize)}
+                    onClick={() => {
+                      setCurrentPage((p) => p + 1);
+                      window.scrollTo({ top: 180, behavior: 'smooth' });
+                    }}
+                    className="h-8 px-2.5 text-xs"
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= Math.ceil(Math.min(searchMeta.total, 10000) / pageSize)}
+                    onClick={() => {
+                      const maxPage = Math.ceil(Math.min(searchMeta.total, 10000) / pageSize);
+                      setCurrentPage(maxPage);
+                      window.scrollTo({ top: 180, behavior: 'smooth' });
+                    }}
+                    className="h-8 w-8 p-0"
+                    title="Last Page"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
