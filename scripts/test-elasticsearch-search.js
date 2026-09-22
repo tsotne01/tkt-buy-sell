@@ -105,8 +105,8 @@ async function main() {
   let indexed = false;
   for (let attempt = 1; attempt <= 10; attempt++) {
     await sleep(1500);
-    // Search with intentional typo: "lipaa"
-    const searchRes = await request(`${GATEWAY_URL}/api/events?search=lipaa`);
+    // Search with intentional typo: "lipaa" + timestamp for unique ranking among 1M events
+    const searchRes = await request(`${GATEWAY_URL}/api/events?search=lipaa%20${timestamp}`);
     if (searchRes.ok && searchRes.data.events) {
       const found = searchRes.data.events.find((e) => e.id === createdId || e.title.includes(String(timestamp)));
       if (found) {

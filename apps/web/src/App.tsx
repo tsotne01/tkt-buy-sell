@@ -2,11 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { 
   Ticket, Calendar, MapPin, Search, ShieldCheck, 
-  Clock, CheckCircle, AlertTriangle, ArrowRight, 
-  RefreshCw, Cpu, Layers, UserCheck, DollarSign, X,
-  LogIn, LogOut, User, Lock, Mail, Tag, Sparkles,
-  Eye, EyeOff, UserPlus, Key, BadgeCheck, Check, ChevronRight
+  Clock, CheckCircle2, AlertCircle, ArrowRight, 
+  RefreshCw, LogIn, LogOut, User, Lock, Mail, Sparkles,
+  Eye, EyeOff, UserPlus, CreditCard, ChevronRight, Check, X, 
+  Shield, Smartphone, QrCode, Download, Info, Building, 
+  ArrowUpRight, Music, Trophy, Film, PartyPopper, HeartHandshake,
+  Layers, CheckCircle
 } from 'lucide-react';
+
+import { Button } from './components/ui/button';
+import { Badge } from './components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from './components/ui/card';
+import { Input } from './components/ui/input';
+import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from './components/ui/tabs';
+import { Avatar } from './components/ui/avatar';
+import { Separator } from './components/ui/separator';
+import { cn } from './lib/utils';
 
 interface EventItem {
   id: string;
@@ -54,13 +66,20 @@ interface UserProfile {
   role: 'BUYER' | 'SELLER' | string;
 }
 
+interface ToastNotification {
+  id: string;
+  type: 'success' | 'error' | 'info';
+  title: string;
+  message: string;
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'events' | 'resale' | 'my-tickets' | 'architecture' | 'login' | 'register' | 'profile'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'resale' | 'my-tickets'>('events');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [searchMeta, setSearchMeta] = useState<{ tookMs?: number; total: number; isSearching: boolean }>({
-    total: 4,
+    total: 1000000,
     isSearching: false,
   });
 
@@ -86,6 +105,7 @@ export default function App() {
   const [authError, setAuthError] = useState<string>('');
   const [authLoading, setAuthLoading] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState<boolean>(false);
 
   // Secondary Resale Marketplace State
   const [resaleTickets, setResaleTickets] = useState<TicketItem[]>([]);
@@ -93,14 +113,13 @@ export default function App() {
 
   // WebSocket Live Sync State
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [wsConnected, setWsConnected] = useState<boolean>(false);
 
   // Events & Tickets state
   const [events, setEvents] = useState<EventItem[]>([
     {
       id: 'evt_1',
       title: 'Coldplay - Music of the Spheres World Tour',
-      description: 'Experience Coldplay live in concert with an immersive stadium spectacle.',
+      description: 'Experience Coldplay live in concert with an immersive stadium light spectacle and world-class sound.',
       category: 'Concerts',
       venue_name: 'Wembley Stadium',
       city: 'London',
@@ -112,7 +131,7 @@ export default function App() {
     {
       id: 'evt_2',
       title: 'UEFA Champions League Final 2026',
-      description: 'The pinnacle of European club football. Watch the two finest clubs battle for glory.',
+      description: 'The pinnacle of European football. Witness two legendary clubs compete for the continental championship.',
       category: 'Sports',
       venue_name: 'Wembley Stadium',
       city: 'London',
@@ -123,8 +142,8 @@ export default function App() {
     },
     {
       id: 'evt_3',
-      title: 'Hans Zimmer Live - The Symphony',
-      description: 'The legendary film composer performs masterpieces from Interstellar, Gladiator, and Inception.',
+      title: 'Hans Zimmer Live - The World Tour',
+      description: 'The Oscar-winning master performs iconic suites from Interstellar, Dune, Inception, and Gladiator.',
       category: 'Concerts',
       venue_name: 'Madison Square Garden',
       city: 'New York',
@@ -135,8 +154,8 @@ export default function App() {
     },
     {
       id: 'evt_4',
-      title: 'Hamilton - The Award-Winning Musical',
-      description: 'Lin-Manuel Miranda’s groundbreaking musical drama featuring revolutionary history in hip-hop.',
+      title: 'Hamilton - The Musical Drama',
+      description: 'Lin-Manuel Miranda’s Pulitzer-winning phenomenon chronicling America then as told by America now.',
       category: 'Theater',
       venue_name: 'Staples Center',
       city: 'Los Angeles',
@@ -152,14 +171,32 @@ export default function App() {
   const [holdTimeRemaining, setHoldTimeRemaining] = useState<number>(600);
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState<boolean>(false);
-  const [sagaFeedback, setSagaFeedback] = useState<{ status: 'idle' | 'success' | 'failed'; message: string }>({
-    status: 'idle',
-    message: '',
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState<boolean>(false);
+  const [isArchModalOpen, setIsArchModalOpen] = useState<boolean>(false);
+
+  // Payment Form State
+  const [checkoutForm, setCheckoutForm] = useState({
+    cardNumber: '4242 •••• •••• 4242',
+    cardExpiry: '12/28',
+    cardCvc: '888',
+    cardName: 'Alex Morgan',
+    simulateDecline: false,
   });
 
   // Resale modal state
   const [resaleModalTicket, setResaleModalTicket] = useState<OrderItem | null>(null);
   const [resalePriceInput, setResalePriceInput] = useState<string>('120');
+
+  // Toasts
+  const [toasts, setToasts] = useState<ToastNotification[]>([]);
+
+  const addToast = (type: 'success' | 'error' | 'info', title: string, message: string) => {
+    const id = `toast_${Date.now()}_${Math.random()}`;
+    setToasts((prev) => [...prev, { id, type, title, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  };
 
   // Real Auth Handlers
   const handleLogin = async (email: string, password: string): Promise<boolean> => {
@@ -189,13 +226,7 @@ export default function App() {
       localStorage.setItem('tkt_user', JSON.stringify(user));
       setIsAuthModalOpen(false);
       setAuthLoading(false);
-      if (activeTab === 'login' || activeTab === 'register') {
-        setActiveTab('events');
-      }
-      setSagaFeedback({
-        status: 'success',
-        message: `Signed in as ${user.name} (${user.role}). JWT token verified.`,
-      });
+      addToast('success', 'Welcome Back', `Signed in as ${user.name}`);
       return true;
     } catch (err: any) {
       setAuthError(err.message || 'Connection failed');
@@ -232,11 +263,7 @@ export default function App() {
       localStorage.setItem('tkt_user', JSON.stringify(user));
       setIsAuthModalOpen(false);
       setAuthLoading(false);
-      setActiveTab('events');
-      setSagaFeedback({
-        status: 'success',
-        message: `Welcome to TicketHub, ${user.name}! Your account has been registered in PostgreSQL with JWT authentication.`,
-      });
+      addToast('success', 'Account Created', `Welcome to TicketHub, ${user.name}!`);
     } catch (err: any) {
       setAuthError(err.message || 'Registration failed');
       setAuthLoading(false);
@@ -253,14 +280,11 @@ export default function App() {
       name: 'Guest Fan',
       role: 'GUEST',
     });
-    setActiveTab('events');
-    setSagaFeedback({
-      status: 'idle',
-      message: '',
-    });
+    setIsUserMenuOpen(false);
+    addToast('info', 'Signed Out', 'You have been signed out successfully.');
   };
 
-  // Load secondary resale tickets from PostgreSQL
+  // Load secondary resale tickets from backend
   const loadResaleTickets = async () => {
     setIsLoadingResale(true);
     try {
@@ -280,7 +304,7 @@ export default function App() {
     loadResaleTickets();
   }, []);
 
-  // Live Debounced Elasticsearch Query
+  // Debounced search query
   useEffect(() => {
     const timer = setTimeout(async () => {
       setSearchMeta((prev) => ({ ...prev, isSearching: true }));
@@ -304,7 +328,7 @@ export default function App() {
         console.warn('Live event search error:', err);
       }
       setSearchMeta((prev) => ({ ...prev, isSearching: false }));
-    }, 250);
+    }, 220);
 
     return () => clearTimeout(timer);
   }, [searchQuery, selectedCategory]);
@@ -316,22 +340,19 @@ export default function App() {
     await handleHoldTicket(ticket);
   };
 
-  // Load events dynamically from catalog API
+  // Load events dynamically
   useEffect(() => {
     fetch('/api/catalog/events')
       .then((res) => res.json())
       .then((data) => {
         if (data && data.events && data.events.length > 0) {
           setEvents(data.events);
-          if (!selectedEvent) {
-            setSelectedEvent(data.events[0]);
-          }
         }
       })
       .catch(() => {});
   }, []);
 
-  // Load user orders from PostgreSQL orders table
+  // Load user orders
   useEffect(() => {
     if (!activeUser?.id) return;
     fetch(`/api/orders/user/${activeUser.id}`)
@@ -342,8 +363,8 @@ export default function App() {
             id: o.id,
             ticket_id: o.ticket_id || o.ticketId,
             event_id: o.event_id || o.eventId,
-            event_title: o.event_id === 'evt_1' ? 'Coldplay - Music of the Spheres' : 'Event Ticket',
-            seat_info: `Seat #${o.ticket_id || o.ticketId}`,
+            event_title: o.event_id === 'evt_1' ? 'Coldplay - Music of the Spheres' : 'Live Event Ticket',
+            seat_info: `Section VIP • Seat #${(o.ticket_id || o.ticketId).slice(-3)}`,
             amount: Number(o.amount) || 0,
             status: o.status,
             qr_code: o.qr_code || o.qrCode,
@@ -355,7 +376,7 @@ export default function App() {
       .catch(() => {});
   }, [activeUser.id]);
 
-  // Establish real-time Socket.IO connection
+  // Real-time WebSockets
   useEffect(() => {
     const s = io(window.location.origin, {
       path: '/socket.io',
@@ -365,8 +386,6 @@ export default function App() {
     });
 
     s.on('connect', () => {
-      console.log('[WebSocket] Connected! Socket ID:', s.id);
-      setWsConnected(true);
       if (activeUser?.id) {
         s.emit('joinUserRoom', activeUser.id);
       }
@@ -375,13 +394,7 @@ export default function App() {
       }
     });
 
-    s.on('disconnect', () => {
-      console.log('[WebSocket] Disconnected');
-      setWsConnected(false);
-    });
-
     s.on('seatUpdated', (update: any) => {
-      console.log('[WebSocket] Live seatUpdated received:', update);
       loadResaleTickets();
       const ticketId = update.ticket_id || update.ticketId;
       if (!ticketId) return;
@@ -402,7 +415,6 @@ export default function App() {
         })
       );
 
-      // If this seat was held by us and got released or sold
       setHeldTicket((currHeld) => {
         if (currHeld && currHeld.id === ticketId) {
           if (update.status === 'AVAILABLE' && update.held_by_user_id !== activeUser.id) {
@@ -417,7 +429,6 @@ export default function App() {
     });
 
     s.on('orderUpdated', (orderUpdate: any) => {
-      console.log('[WebSocket] Live orderUpdated received:', orderUpdate);
       loadResaleTickets();
       const orderId = orderUpdate.orderId || orderUpdate.id;
       if (orderUpdate.status === 'COMPLETED') {
@@ -426,7 +437,7 @@ export default function App() {
           ticket_id: orderUpdate.ticketId || orderUpdate.ticket_id || '',
           event_id: orderUpdate.eventId || selectedEvent?.id || '',
           event_title: selectedEvent?.title || 'Live Event',
-          seat_info: `Reserved Seat (${orderUpdate.ticketId || ''})`,
+          seat_info: `Section VIP • Seat #${(orderUpdate.ticketId || '').slice(-3)}`,
           amount: Number(orderUpdate.amount) || 0,
           status: 'COMPLETED',
           qr_code: orderUpdate.qr_code || orderUpdate.qrCode || `TKT-${orderId}-PASS`,
@@ -434,19 +445,15 @@ export default function App() {
         };
 
         setOrders((prev) => [completedOrder, ...prev.filter((o) => o.id !== orderId)]);
-        setSagaFeedback({
-          status: 'success',
-          message: `Saga Completed via RabbitMQ & WebSockets! Digital QR Pass issued for Order ${orderId}.`,
-        });
         setIsProcessingCheckout(false);
+        setIsCheckoutModalOpen(false);
         setHeldTicket(null);
+        addToast('success', 'Order Confirmed!', `Your official ticket pass is ready in My Tickets.`);
       } else if (orderUpdate.status === 'CANCELLED') {
-        setSagaFeedback({
-          status: 'failed',
-          message: `Saga Compensation: ${orderUpdate.reason || 'Payment declined'}. Seat hold automatically released.`,
-        });
         setIsProcessingCheckout(false);
+        setIsCheckoutModalOpen(false);
         setHeldTicket(null);
+        addToast('error', 'Checkout Cancelled', orderUpdate.reason || 'Payment could not be processed.');
       }
     });
 
@@ -457,7 +464,6 @@ export default function App() {
     };
   }, [activeUser.id]);
 
-  // Join room when selected event changes
   useEffect(() => {
     if (socket && selectedEvent?.id) {
       socket.emit('joinEventRoom', selectedEvent.id);
@@ -468,7 +474,6 @@ export default function App() {
   useEffect(() => {
     if (!selectedEvent) return;
 
-    // Fetch from backend API Gateway
     fetch(`/api/inventory/events/${selectedEvent.id}/tickets`)
       .then((res) => res.json())
       .then((data) => {
@@ -516,6 +521,7 @@ export default function App() {
         if (prev <= 1) {
           handleReleaseHold(heldTicket.id);
           clearInterval(interval);
+          addToast('info', 'Hold Expired', 'Your 10-minute seat reservation has expired.');
           return 0;
         }
         return prev - 1;
@@ -526,6 +532,11 @@ export default function App() {
 
   const handleHoldTicket = async (ticket: TicketItem) => {
     if (ticket.status !== 'AVAILABLE') return;
+
+    if (!token || activeUser.role === 'GUEST') {
+      setIsAuthModalOpen(true);
+      return;
+    }
 
     try {
       const res = await fetch('/api/inventory/hold', {
@@ -541,7 +552,7 @@ export default function App() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Seat is currently locked or reserved by another customer.');
+        addToast('error', 'Seat Unavailable', err.message || 'This seat is currently reserved by another guest.');
         return;
       }
     } catch {
@@ -550,7 +561,7 @@ export default function App() {
 
     setHeldTicket(ticket);
     setHoldTimeRemaining(600);
-    setSagaFeedback({ status: 'idle', message: '' });
+    addToast('success', 'Seat Reserved', `${ticket.section} • Row ${ticket.row} Seat ${ticket.seat_number} reserved for 10 minutes.`);
 
     setTickets((prev) =>
       prev.map((t) =>
@@ -578,16 +589,13 @@ export default function App() {
     );
   };
 
-  const handleCheckoutSaga = async (simulateFailure: boolean = false) => {
+  const handleCompletePayment = async (simulateDecline: boolean = false) => {
     if (!heldTicket || !selectedEvent) return;
 
     setIsProcessingCheckout(true);
-    setSagaFeedback({ status: 'idle', message: 'Submitting order to RabbitMQ Saga...' });
-
-    const chargeAmount = simulateFailure ? 999.99 : heldTicket.price;
+    const chargeAmount = simulateDecline ? 999.99 : heldTicket.price;
 
     try {
-      // 1. Trigger Order Creation -> Dispatches order.created on RabbitMQ
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -600,18 +608,15 @@ export default function App() {
       });
       const orderData = await res.json();
 
-      // Fallback polling timeout in case WebSockets is not active
       setTimeout(async () => {
-        if (simulateFailure) {
+        if (simulateDecline) {
           setIsProcessingCheckout(false);
-          setSagaFeedback({
-            status: 'failed',
-            message: 'Saga Compensating Action: Payment declined! Seat hold automatically released in Redis and PostgreSQL.',
-          });
+          setIsCheckoutModalOpen(false);
           setTickets((prev) =>
             prev.map((t) => (t.id === heldTicket.id ? { ...t, status: 'AVAILABLE' } : t))
           );
           setHeldTicket(null);
+          addToast('error', 'Payment Declined', 'The card was declined by issuing bank. Seat reservation released.');
         } else {
           if (orderData?.id) {
             try {
@@ -634,29 +639,26 @@ export default function App() {
                 setTickets((prev) =>
                   prev.map((t) => (t.id === heldTicket.id ? { ...t, status: 'SOLD' } : t))
                 );
-                setSagaFeedback({
-                  status: 'success',
-                  message: 'Saga Completed! Payment authorized, ticket marked SOLD, and digital pass dispatched.',
-                });
                 setHeldTicket(null);
                 setIsProcessingCheckout(false);
+                setIsCheckoutModalOpen(false);
+                setActiveTab('my-tickets');
+                setSelectedEvent(null);
+                addToast('success', 'Order Confirmed!', `Your official ticket pass is ready.`);
               }
             } catch {}
           }
         }
-      }, 2200);
+      }, 1600);
     } catch (err) {
       setIsProcessingCheckout(false);
-      setSagaFeedback({
-        status: 'failed',
-        message: 'Network error or service unavailable. Rollback triggered.',
-      });
+      setIsCheckoutModalOpen(false);
+      addToast('error', 'Connection Error', 'Could not reach payment gateway.');
     }
   };
 
   const handleListResale = (order: OrderItem) => {
     const price = parseFloat(resalePriceInput) || 100;
-    // Call backend resale endpoint
     fetch('/api/inventory/resale', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -667,13 +669,11 @@ export default function App() {
       }),
     }).catch(() => {});
 
-    // Remove from active orders and list in marketplace
     setOrders((prev) => prev.filter((o) => o.id !== order.id));
     setResaleModalTicket(null);
-    alert(`Ticket for ${order.event_title} successfully listed on the P2P Resale Marketplace for $${price}!`);
+    loadResaleTickets();
+    addToast('success', 'Listed for Resale', `Ticket listed on marketplace for $${price}. Barcode secured.`);
   };
-
-  const filteredEvents = events;
 
   const formatTimer = (sec: number) => {
     const m = Math.floor(sec / 60);
@@ -682,213 +682,231 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      {/* Top Bar: Cluster Status */}
-      <div className="bg-slate-900 border-b border-slate-800 px-6 py-2 flex items-center justify-between text-xs">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-1.5 text-emerald-400 font-medium">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span>Local K8s Ingress LoadBalancer</span>
-          </div>
-          <span className="text-slate-600">|</span>
-          <span className="text-slate-400">Gateway: <code className="text-emerald-300">localhost:4000</code></span>
-          <span className="text-slate-400">gRPC Services: <code className="text-sky-300">50051-50054</code></span>
-          <span className="text-slate-400">RabbitMQ: <code className="text-amber-300">5672</code></span>
-          <span className="text-slate-600">|</span>
-          <div className="flex items-center space-x-1.5 font-medium">
-            <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${wsConnected ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${wsConnected ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-            </span>
-            <span className={wsConnected ? 'text-emerald-400' : 'text-rose-400'}>
-              {wsConnected ? 'Live WebSockets: Active' : 'WebSocket: Connecting...'}
-            </span>
-          </div>
-        </div>
-
-        {/* User Switcher & Auth State */}
-        <div className="flex items-center space-x-2 sm:space-x-3">
-          <div className="flex items-center space-x-1.5 bg-slate-800/90 px-2 py-0.5 rounded border border-slate-700">
-            <UserCheck className="w-3.5 h-3.5 text-slate-400" />
-            <span className="font-semibold text-slate-200 text-xs">{activeUser.name}</span>
-            <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase ${
-              activeUser.role === 'SELLER'
-                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-            }`}>
-              {activeUser.role}
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-1.5">
-            {token && activeUser.role !== 'GUEST' ? (
-              <button
-                onClick={handleLogout}
-                className="px-2.5 py-0.5 bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 text-slate-300 rounded text-[11px] font-medium border border-slate-700 transition flex items-center space-x-1"
-                title="Sign out of current account"
-              >
-                <LogOut className="w-3 h-3 text-slate-400" />
-                <span>Sign Out</span>
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => { setActiveTab('login'); setAuthError(''); }}
-                  className="px-2.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-medium border border-slate-700 transition flex items-center space-x-1"
-                >
-                  <LogIn className="w-3 h-3 text-slate-400" />
-                  <span>Sign In</span>
-                </button>
-                <button
-                  onClick={() => { setActiveTab('register'); setAuthError(''); }}
-                  className="px-2.5 py-0.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded text-[11px] transition"
-                >
-                  Register
-                </button>
-              </>
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      {/* Toast Notification Container */}
+      <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm pointer-events-none">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={cn(
+              'pointer-events-auto flex items-start gap-3 p-4 rounded-2xl border shadow-2xl backdrop-blur-xl animate-in slide-in-from-bottom-5 duration-300',
+              toast.type === 'success' && 'bg-slate-900/95 border-emerald-500/40 text-emerald-400',
+              toast.type === 'error' && 'bg-slate-900/95 border-rose-500/40 text-rose-400',
+              toast.type === 'info' && 'bg-slate-900/95 border-sky-500/40 text-sky-400'
             )}
+          >
+            {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />}
+            {toast.type === 'error' && <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />}
+            {toast.type === 'info' && <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />}
+            <div>
+              <p className="text-sm font-semibold text-white leading-tight">{toast.title}</p>
+              <p className="text-xs text-slate-400 mt-1 leading-normal">{toast.message}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Modern Customer Announcement Bar */}
+      <div className="bg-gradient-to-r from-emerald-950/60 via-slate-900 to-emerald-950/60 border-b border-emerald-500/20 px-6 py-2 text-xs">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-slate-300">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span className="font-medium">Official Fan-to-Fan Marketplace</span>
+            <span className="text-slate-600 hidden sm:inline">•</span>
+            <span className="text-slate-400 hidden sm:inline">100% Guaranteed Anti-Fraud Barcodes</span>
+            <span className="text-slate-600 hidden md:inline">•</span>
+            <span className="text-slate-400 hidden md:inline">Zero Hidden Checkout Fees</span>
+          </div>
+
+          <div className="flex items-center space-x-4 text-slate-400">
+            <span className="flex items-center space-x-1.5">
+              <MapPin className="w-3.5 h-3.5 text-slate-500" />
+              <span>Worldwide Events</span>
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Main Navigation */}
-      <header className="bg-slate-900/80 backdrop-blur border-b border-slate-800 sticky top-0 z-40 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => { setSelectedEvent(null); setActiveTab('events'); }}>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+      {/* Main Navbar */}
+      <header className="bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-40 px-6 py-3.5">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+          {/* Brand Logo */}
+          <div 
+            className="flex items-center space-x-3 cursor-pointer group select-none" 
+            onClick={() => { setSelectedEvent(null); setActiveTab('events'); }}
+          >
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/25 group-hover:scale-105 transition-transform duration-200">
               <Ticket className="w-5 h-5 text-slate-950 font-bold" />
             </div>
             <div>
-              <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
-                TicketHub
-              </span>
-              <span className="text-xs ml-2 text-emerald-400 font-semibold px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
-                gRPC + RMQ
-              </span>
+              <div className="flex items-center space-x-2">
+                <span className="text-xl font-bold tracking-tight text-white group-hover:text-emerald-400 transition-colors">
+                  TicketHub
+                </span>
+                <Badge variant="outline" className="text-[10px] py-0 px-2 text-emerald-400 border-emerald-500/30 bg-emerald-500/5">
+                  Verified
+                </Badge>
+              </div>
+              <p className="text-[11px] text-slate-400">Live Concerts & Stadium Sports</p>
             </div>
           </div>
 
+          {/* Navigation Links */}
           <nav className="flex items-center space-x-1 sm:space-x-2">
-            <button
+            <Button
+              variant={activeTab === 'events' && !selectedEvent ? 'secondary' : 'ghost'}
+              size="sm"
               onClick={() => { setActiveTab('events'); setSelectedEvent(null); }}
-              className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${
-                activeTab === 'events' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className={cn(activeTab === 'events' && !selectedEvent && 'bg-slate-800 text-white font-semibold')}
             >
-              Browse Events
-            </button>
-            <button
+              Explore Events
+            </Button>
+
+            <Button
+              variant={activeTab === 'resale' ? 'secondary' : 'ghost'}
+              size="sm"
               onClick={() => { setActiveTab('resale'); setSelectedEvent(null); }}
-              className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${
-                activeTab === 'resale' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30' : 'text-slate-400 hover:text-slate-200'
-              }`}
+              className={cn(activeTab === 'resale' && 'bg-purple-950/60 text-purple-300 border border-purple-500/30')}
             >
-              P2P Resale
-            </button>
-            <button
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-purple-400" />
+              <span>Resale Market</span>
+            </Button>
+
+            <Button
+              variant={activeTab === 'my-tickets' ? 'secondary' : 'ghost'}
+              size="sm"
               onClick={() => { setActiveTab('my-tickets'); setSelectedEvent(null); }}
-              className={`relative px-3.5 py-2 rounded-lg text-sm font-medium transition ${
-                activeTab === 'my-tickets' ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              My Tickets ({orders.length})
-              {orders.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-sky-500"></span>
+              className={cn(
+                'relative',
+                activeTab === 'my-tickets' && 'bg-sky-950/60 text-sky-300 border border-sky-500/30'
               )}
-            </button>
-            <button
-              onClick={() => { setActiveTab('architecture'); setSelectedEvent(null); }}
-              className={`px-3.5 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-1.5 ${
-                activeTab === 'architecture' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'text-slate-400 hover:text-slate-200'
-              }`}
             >
-              <Cpu className="w-4 h-4" />
-              <span className="hidden md:inline">Microservices</span>
-            </button>
+              <Ticket className="w-3.5 h-3.5 mr-1.5 text-sky-400" />
+              <span>My Tickets</span>
+              {orders.length > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-sky-500 text-slate-950 text-[10px] font-bold">
+                  {orders.length}
+                </span>
+              )}
+            </Button>
 
-            <div className="h-5 w-px bg-slate-800 mx-1 hidden sm:block"></div>
+            <div className="h-5 w-px bg-slate-800 mx-2 hidden sm:block"></div>
 
+            {/* User Profile / Auth Button */}
             {token && activeUser.role !== 'GUEST' ? (
-              <button
-                onClick={() => { setActiveTab('profile'); setSelectedEvent(null); }}
-                className={`px-3.5 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 ${
-                  activeTab === 'profile'
-                    ? 'bg-slate-800 text-white border border-slate-700 shadow'
-                    : 'text-slate-300 hover:bg-slate-800/60 border border-transparent'
-                }`}
-                title="View your account & security profile"
-              >
-                <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 font-extrabold text-[10px] flex items-center justify-center">
-                  {activeUser.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-                </div>
-                <span className="text-xs">{activeUser.name.split(' ')[0]}</span>
-              </button>
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="flex items-center space-x-2.5 px-2 hover:bg-slate-900 border border-slate-800 rounded-xl"
+                >
+                  <Avatar fallback={activeUser.name.slice(0, 2).toUpperCase()} size="sm" />
+                  <span className="text-xs font-medium text-slate-200">{activeUser.name.split(' ')[0]}</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                </Button>
+
+                {isUserMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-slate-800 bg-slate-900/95 p-2 shadow-2xl backdrop-blur-xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="p-3 border-b border-slate-800/80">
+                      <p className="text-xs font-semibold text-white truncate">{activeUser.name}</p>
+                      <p className="text-[11px] text-slate-400 truncate mt-0.5">{activeUser.email}</p>
+                      <Badge variant="success" className="mt-2 text-[10px] uppercase font-bold">
+                        {activeUser.role} Account
+                      </Badge>
+                    </div>
+
+                    <div className="py-1">
+                      <button
+                        onClick={() => { setActiveTab('my-tickets'); setIsUserMenuOpen(false); }}
+                        className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800/60 rounded-lg transition"
+                      >
+                        <Ticket className="w-3.5 h-3.5 text-slate-400" />
+                        <span>My Tickets & Passes</span>
+                      </button>
+                      <button
+                        onClick={() => { setActiveTab('resale'); setIsUserMenuOpen(false); }}
+                        className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800/60 rounded-lg transition"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Resale Listings</span>
+                      </button>
+                    </div>
+
+                    <Separator className="my-1" />
+
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
-              <div className="flex items-center space-x-1.5">
-                <button
-                  onClick={() => { setActiveTab('login'); setAuthError(''); setSelectedEvent(null); }}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                    activeTab === 'login' ? 'bg-slate-800 text-white border border-slate-700' : 'text-slate-300 hover:text-white'
-                  }`}
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setAuthMode('login'); setIsAuthModalOpen(true); }}
+                  className="text-slate-300 hover:text-white text-xs"
                 >
                   Sign In
-                </button>
-                <button
-                  onClick={() => { setActiveTab('register'); setAuthError(''); setSelectedEvent(null); }}
-                  className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition shadow-lg shadow-emerald-500/20 ${
-                    activeTab === 'register' ? 'bg-emerald-400 text-slate-950' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
-                  }`}
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => { setAuthMode('register'); setIsAuthModalOpen(true); }}
+                  className="text-xs"
                 >
-                  Register
-                </button>
+                  Create Account
+                </Button>
               </div>
             )}
           </nav>
         </div>
       </header>
 
-      {/* Held Ticket Banner (10-Minute Cart Hold) */}
+      {/* Active 10-Minute Cart Hold Banner */}
       {heldTicket && (
-        <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border-b border-amber-500/30 px-6 py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border-b border-amber-500/30 px-6 py-3 sticky top-[65px] z-30 backdrop-blur-md">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center space-x-3">
-              <Clock className="w-5 h-5 text-amber-400 animate-spin" style={{ animationDuration: '6s' }} />
+              <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300">
+                <Clock className="w-4 h-4 animate-pulse" />
+              </div>
               <div>
-                <span className="font-semibold text-amber-300">Seat Held in Redis:</span>{' '}
-                <span className="text-slate-200">
+                <p className="text-xs font-semibold text-amber-300">
+                  Seat Temporarily Reserved For You
+                </p>
+                <p className="text-xs text-slate-200">
                   {heldTicket.section} • Row {heldTicket.row} • Seat {heldTicket.seat_number} (${heldTicket.price})
-                </span>
-                <span className="ml-3 px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-xs font-mono font-bold">
-                  TTL: {formatTimer(holdTimeRemaining)}
-                </span>
+                </p>
               </div>
             </div>
 
             <div className="flex items-center space-x-3">
-              <button
+              <div className="px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-xl text-xs font-mono font-bold text-amber-200">
+                {formatTimer(holdTimeRemaining)}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => handleReleaseHold(heldTicket.id)}
-                className="text-xs text-slate-400 hover:text-rose-400 transition"
+                className="text-xs text-slate-400 hover:text-rose-400"
               >
-                Release Seat
-              </button>
-              <button
-                onClick={() => handleCheckoutSaga(false)}
-                disabled={isProcessingCheckout}
-                className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 font-semibold rounded-lg text-xs transition shadow-lg shadow-emerald-500/20"
+                Release
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => setIsCheckoutModalOpen(true)}
+                className="shadow-lg shadow-emerald-500/20 text-xs"
               >
-                {isProcessingCheckout ? 'Processing Saga...' : 'Complete Checkout'}
-              </button>
-              <button
-                onClick={() => handleCheckoutSaga(true)}
-                disabled={isProcessingCheckout}
-                title="Tests RabbitMQ compensating transaction when payment is declined"
-                className="px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 font-semibold rounded-lg text-xs transition"
-              >
-                Simulate Payment Fail (Saga Test)
-              </button>
+                Proceed to Checkout
+              </Button>
             </div>
           </div>
         </div>
@@ -900,60 +918,80 @@ export default function App() {
         {activeTab === 'events' && !selectedEvent && (
           <div>
             {/* Hero & Search Header */}
-            <div className="mb-8">
-              <h1 className="text-3xl font-extrabold tracking-tight text-white mb-2">
-                Live Events & Stadium Seats
+            <div className="mb-10 text-center max-w-3xl mx-auto">
+              <Badge variant="outline" className="mb-3 py-1 px-3 text-xs text-emerald-400 border-emerald-500/30 bg-emerald-500/5">
+                Official Live Entertainment
+              </Badge>
+              <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white mb-3 leading-tight">
+                Find tickets to your favorite live events
               </h1>
-              <p className="text-slate-400 text-sm max-w-2xl">
-                High-throughput ticketing powered by NestJS gRPC microservices, atomic Redis seat locking, and RabbitMQ Saga choreography.
+              <p className="text-slate-400 text-sm max-w-xl mx-auto">
+                Secure 100% verified tickets with instant digital mobile delivery, anti-fraud protection, and zero hidden service fees.
               </p>
 
-              {/* Filters & Elasticsearch Status */}
-              <div className="mt-6 flex flex-col gap-3">
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="relative flex-1">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search concerts, sports, artists, or venues (e.g. 'clodplay', 'wemly', 'zimmer')..."
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
-                    />
-                    {searchMeta.isSearching && (
-                      <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin absolute right-3.5 top-3.5" />
-                    )}
-                  </div>
-
-                  <div className="flex space-x-2">
-                    {['All', 'Concerts', 'Sports', 'Theater'].map((cat) => (
-                      <button
-                        key={cat}
-                        onClick={() => setSelectedCategory(cat)}
-                        className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition ${
-                          selectedCategory === cat
-                            ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                            : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
+              {/* Search Bar & Category Filters */}
+              <div className="mt-8 space-y-4">
+                <div className="relative max-w-2xl mx-auto">
+                  <Input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by artist, team, venue, or city (e.g., 'Coldplay', 'Wembley', 'Zimmer')..."
+                    icon={<Search className="w-4 h-4 text-slate-400" />}
+                    rightElement={
+                      searchMeta.isSearching ? (
+                        <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
+                      ) : searchQuery ? (
+                        <button
+                          onClick={() => setSearchQuery('')}
+                          className="text-slate-500 hover:text-slate-300"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      ) : null
+                    }
+                    className="h-12 text-sm bg-slate-900/90 border-slate-800 rounded-2xl shadow-xl focus-visible:ring-emerald-500/40"
+                  />
                 </div>
 
-                {/* Elasticsearch Search Speed & Typo-Tolerance Badge */}
-                <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                      ⚡ Elasticsearch 8.11 Cluster Active
-                    </span>
-                    <span className="text-slate-500 hidden sm:inline">BM25 Relevance & Typo-Tolerant (Fuzzy AUTO)</span>
-                  </div>
+                {/* Category Pills */}
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                  {[
+                    { label: 'All Events', value: 'All', icon: Ticket },
+                    { label: 'Concerts', value: 'Concerts', icon: Music },
+                    { label: 'Sports', value: 'Sports', icon: Trophy },
+                    { label: 'Theater & Arts', value: 'Theater', icon: Film },
+                  ].map((cat) => {
+                    const Icon = cat.icon;
+                    const isSelected = selectedCategory === cat.value;
+                    return (
+                      <button
+                        key={cat.value}
+                        onClick={() => setSelectedCategory(cat.value)}
+                        className={cn(
+                          'inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 border',
+                          isSelected
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-500 shadow-md shadow-emerald-500/20'
+                            : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+                        )}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{cat.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Clean Result Count */}
+                <div className="text-xs text-slate-500 pt-2 flex items-center justify-center space-x-3">
+                  <span>{events.length} {events.length === 1 ? 'event' : 'events'} found</span>
+                  <span>•</span>
+                  <span>Over 1,000,000 live stadium seats</span>
                   {searchMeta.tookMs !== undefined && (
-                    <div className="text-slate-400 text-xs font-mono">
-                      {events.length} {events.length === 1 ? 'event' : 'events'} matched in <span className="text-emerald-400 font-semibold">{searchMeta.tookMs}ms</span>
-                    </div>
+                    <>
+                      <span>•</span>
+                      <span className="text-emerald-400 font-mono font-medium">⚡ Instant search ({searchMeta.tookMs}ms)</span>
+                    </>
                   )}
                 </div>
               </div>
@@ -961,56 +999,63 @@ export default function App() {
 
             {/* Events Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {filteredEvents.map((event) => (
-                <div
+              {events.map((event) => (
+                <Card
                   key={event.id}
-                  className="group bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-2xl overflow-hidden flex flex-col transition duration-300 hover:shadow-xl hover:shadow-emerald-500/5"
+                  className="group overflow-hidden flex flex-col border-slate-800/80 hover:border-emerald-500/40 transition-all duration-300 hover:shadow-2xl hover:shadow-emerald-500/5 bg-slate-900/60"
                 >
-                  <div className="h-44 relative overflow-hidden bg-slate-800">
+                  {/* Event Thumbnail */}
+                  <div className="h-48 relative overflow-hidden bg-slate-800">
                     <img
                       src={event.image_url}
                       alt={event.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
-                    <div className="absolute top-3 left-3 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded-full text-xs font-medium text-emerald-400 border border-emerald-500/20">
-                      {event.category}
+                    <div className="absolute top-3 left-3">
+                      <Badge variant="outline" className="bg-slate-950/80 backdrop-blur-md text-emerald-300 border-emerald-500/30">
+                        {event.category}
+                      </Badge>
                     </div>
                   </div>
 
-                  <div className="p-5 flex-1 flex flex-col">
-                    <h3 className="font-bold text-white text-base leading-snug line-clamp-2 mb-2 group-hover:text-emerald-400 transition">
-                      {event.title}
-                    </h3>
-                    <p className="text-slate-400 text-xs line-clamp-2 mb-4">
-                      {event.description}
-                    </p>
+                  <CardContent className="p-5 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h3 className="font-bold text-white text-base leading-snug line-clamp-2 group-hover:text-emerald-400 transition-colors">
+                        {event.title}
+                      </h3>
+                      <p className="text-slate-400 text-xs line-clamp-2 mt-2 leading-relaxed">
+                        {event.description}
+                      </p>
 
-                    <div className="mt-auto space-y-2 pt-3 border-t border-slate-800/80 text-xs text-slate-400">
-                      <div className="flex items-center space-x-2">
-                        <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                        <span>{event.venue_name}, {event.city}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                        <span>{new Date(event.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                      <div className="mt-4 space-y-2 pt-3 border-t border-slate-800/60 text-xs text-slate-400">
+                        <div className="flex items-center space-x-2">
+                          <MapPin className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                          <span className="truncate">{event.venue_name}, {event.city}</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Calendar className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                          <span>{new Date(event.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
+                    <div className="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">
                       <div>
-                        <span className="text-xs text-slate-500 block">From</span>
+                        <span className="text-[11px] text-slate-500 block">From</span>
                         <span className="text-lg font-extrabold text-emerald-400">${event.min_price}</span>
                       </div>
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => setSelectedEvent(event)}
-                        className="px-4 py-2 bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 font-semibold rounded-xl text-xs transition flex items-center space-x-1.5 text-slate-200"
+                        className="group-hover:bg-emerald-500 group-hover:text-slate-950 transition-colors"
                       >
                         <span>Select Seats</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
+                        <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                      </Button>
                     </div>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           </div>
@@ -1019,155 +1064,177 @@ export default function App() {
         {/* TAB 1: EVENT DETAILS & INTERACTIVE SEAT MAP */}
         {selectedEvent && (
           <div>
-            <button
-              onClick={() => setSelectedEvent(null)}
-              className="text-xs text-slate-400 hover:text-slate-200 mb-6 flex items-center space-x-1.5 transition"
-            >
-              <span>← Back to Events</span>
-            </button>
+            <div className="mb-6 flex items-center justify-between">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedEvent(null)}
+                className="text-xs text-slate-400 hover:text-slate-200"
+              >
+                ← Back to All Events
+              </Button>
+              <Badge variant="outline" className="text-xs text-emerald-400 border-emerald-500/30">
+                Official Event Page
+              </Badge>
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Left Column: Event details */}
               <div className="lg:col-span-1 space-y-6">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden p-6 space-y-4">
+                <Card className="overflow-hidden border-slate-800">
                   <img
                     src={selectedEvent.image_url}
                     alt={selectedEvent.title}
-                    className="w-full h-44 object-cover rounded-xl"
+                    className="w-full h-48 object-cover"
                   />
-                  <div className="inline-block bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs px-2.5 py-0.5 rounded-full font-medium">
-                    {selectedEvent.category}
-                  </div>
-                  <h2 className="text-xl font-bold text-white leading-snug">{selectedEvent.title}</h2>
-                  <p className="text-xs text-slate-400 leading-relaxed">{selectedEvent.description}</p>
+                  <CardContent className="p-6 space-y-4">
+                    <Badge variant="outline" className="text-emerald-400 border-emerald-500/30">
+                      {selectedEvent.category}
+                    </Badge>
+                    <h2 className="text-xl font-bold text-white leading-snug">{selectedEvent.title}</h2>
+                    <p className="text-xs text-slate-400 leading-relaxed">{selectedEvent.description}</p>
 
-                  <div className="pt-4 border-t border-slate-800 space-y-2 text-xs text-slate-300">
-                    <div className="flex items-center space-x-2">
-                      <MapPin className="w-4 h-4 text-emerald-400" />
-                      <span>{selectedEvent.venue_name}, {selectedEvent.city}</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Calendar className="w-4 h-4 text-emerald-400" />
-                      <span>{new Date(selectedEvent.date).toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
+                    <Separator className="my-4" />
 
-                {/* Legend */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 text-xs">
-                  <h4 className="font-semibold text-white">Seat Availability Status</h4>
-                  <div className="grid grid-cols-2 gap-2 text-slate-400">
+                    <div className="space-y-2.5 text-xs text-slate-300">
+                      <div className="flex items-center space-x-2.5">
+                        <MapPin className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                        <span>{selectedEvent.venue_name}, {selectedEvent.city}</span>
+                      </div>
+                      <div className="flex items-center space-x-2.5">
+                        <Calendar className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                        <span>{new Date(selectedEvent.date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                      </div>
+                      <div className="flex items-center space-x-2.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                        <span>Guaranteed 100% Authentic Pass</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Seat Map Legend */}
+                <Card className="border-slate-800 p-5">
+                  <h4 className="text-xs font-semibold text-white uppercase tracking-wider mb-3">Seat Legend</h4>
+                  <div className="grid grid-cols-2 gap-3 text-xs text-slate-400">
                     <div className="flex items-center space-x-2">
-                      <div className="w-3.5 h-3.5 rounded bg-emerald-500/20 border border-emerald-500"></div>
+                      <div className="w-3.5 h-3.5 rounded-md bg-emerald-500/20 border border-emerald-500"></div>
                       <span>Available</span>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <div className="w-3.5 h-3.5 rounded bg-amber-500/20 border border-amber-500"></div>
-                      <span>Held (10m TTL)</span>
+                      <div className="w-3.5 h-3.5 rounded-md bg-amber-500/30 border border-amber-500"></div>
+                      <span>Reserved (Hold)</span>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <div className="w-3.5 h-3.5 rounded bg-slate-800 border border-slate-700"></div>
-                      <span>Sold / Booked</span>
+                      <div className="w-3.5 h-3.5 rounded-md bg-slate-800 border border-slate-700"></div>
+                      <span>Sold Out</span>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <div className="w-3.5 h-3.5 rounded bg-purple-500/20 border border-purple-500"></div>
-                      <span>P2P Resale</span>
+                      <div className="w-3.5 h-3.5 rounded-md bg-purple-500/20 border border-purple-500"></div>
+                      <span>Verified Resale</span>
                     </div>
                   </div>
-                </div>
+                </Card>
               </div>
 
-              {/* Right Column: Interactive Seat Grid */}
-              <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col">
-                <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
-                  <div>
-                    <h3 className="font-bold text-white text-lg">Interactive Venue Seat Map</h3>
-                    <p className="text-xs text-slate-400">Click an available seat to lock it via Redis for 10 minutes.</p>
-                  </div>
-                  <div className="bg-slate-800 px-3 py-1 rounded-lg text-xs text-slate-300 font-mono">
-                    STAGE / PITCH
-                  </div>
-                </div>
-
-                {/* The Stage Line */}
-                <div className="w-3/4 mx-auto mb-8 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 via-sky-500/20 to-emerald-500/20 border border-emerald-500/30 text-center text-xs font-semibold text-emerald-300 tracking-wider">
-                  ✦ STAGE / PERFORMANCE AREA ✦
-                </div>
-
-                {/* Seat Groups */}
-                <div className="space-y-6">
-                  {['VIP Lower', 'Section 102', 'General Standing'].map((section) => (
-                    <div key={section} className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="text-xs font-bold text-slate-300">{section}</span>
-                        <span className="text-xs text-emerald-400 font-mono">
-                          {section === 'VIP Lower' ? '$180' : section === 'Section 102' ? '$110' : '$85'}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-6 gap-2">
-                        {tickets
-                          .filter((t) => t.section === section)
-                          .map((ticket) => {
-                            const isHeldByMe = heldTicket?.id === ticket.id;
-                            const isHeld = ticket.status === 'HELD';
-                            const isSold = ticket.status === 'SOLD';
-                            const isAvailable = ticket.status === 'AVAILABLE';
-
-                            let colorClass = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-500 cursor-pointer';
-
-                            if (ticket.is_resale && isAvailable) {
-                              colorClass = 'bg-purple-500/10 border-purple-500/40 text-purple-300 hover:bg-purple-500/30 cursor-pointer';
-                            } else if (isHeldByMe) {
-                              colorClass = 'bg-amber-500/30 border-amber-500 text-amber-200 ring-2 ring-amber-500/50 cursor-pointer';
-                            } else if (isHeld) {
-                              colorClass = 'bg-amber-500/10 border-amber-500/30 text-amber-500 opacity-60 cursor-not-allowed';
-                            } else if (isSold) {
-                              colorClass = 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed';
-                            }
-
-                            return (
-                              <button
-                                key={ticket.id}
-                                disabled={isSold || (isHeld && !isHeldByMe)}
-                                onClick={() => {
-                                  if (isHeldByMe) {
-                                    handleReleaseHold(ticket.id);
-                                  } else {
-                                    handleHoldTicket(ticket);
-                                  }
-                                }}
-                                className={`p-2 rounded-lg border text-center transition flex flex-col items-center justify-center ${colorClass}`}
-                              >
-                                <span className="text-[10px] font-mono font-bold">
-                                  {ticket.row}{ticket.seat_number}
-                                </span>
-                                <span className="text-[9px] opacity-75">${ticket.price}</span>
-                              </button>
-                            );
-                          })}
-                      </div>
+              {/* Right Column: Interactive Seat Grid & Sticky Summary */}
+              <div className="lg:col-span-2 space-y-6">
+                <Card className="border-slate-800 p-6 flex flex-col">
+                  <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
+                    <div>
+                      <h3 className="font-bold text-white text-lg">Select Your Stadium Seats</h3>
+                      <p className="text-xs text-slate-400 mt-0.5">Click an available seat to hold it for 10 minutes while you checkout.</p>
                     </div>
-                  ))}
-                </div>
-
-                {/* Saga Status notification */}
-                {sagaFeedback.status !== 'idle' && (
-                  <div
-                    className={`mt-6 p-4 rounded-xl border text-xs flex items-center space-x-2 ${
-                      sagaFeedback.status === 'success'
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                        : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                    }`}
-                  >
-                    {sagaFeedback.status === 'success' ? (
-                      <CheckCircle className="w-4 h-4 flex-shrink-0" />
-                    ) : (
-                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                    )}
-                    <span>{sagaFeedback.message}</span>
+                    <div className="bg-slate-800 px-3 py-1 rounded-xl text-xs text-slate-300 font-mono">
+                      STAGE
+                    </div>
                   </div>
-                )}
+
+                  {/* Stage Visual */}
+                  <div className="w-3/4 mx-auto mb-8 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-sky-500/20 to-emerald-500/20 border border-emerald-500/30 text-center text-xs font-semibold text-emerald-300 tracking-widest shadow-inner">
+                    ✦ PERFORMANCE STAGE ✦
+                  </div>
+
+                  {/* Seat Groups */}
+                  <div className="space-y-6">
+                    {['VIP Lower', 'Section 102', 'General Standing'].map((section) => (
+                      <div key={section} className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800/80">
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-xs font-bold text-slate-200">{section}</span>
+                          <span className="text-xs text-emerald-400 font-mono font-semibold">
+                            {section === 'VIP Lower' ? '$180' : section === 'Section 102' ? '$110' : '$85'}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-6 gap-2.5">
+                          {tickets
+                            .filter((t) => t.section === section)
+                            .map((ticket) => {
+                              const isHeldByMe = heldTicket?.id === ticket.id;
+                              const isHeld = ticket.status === 'HELD';
+                              const isSold = ticket.status === 'SOLD';
+                              const isAvailable = ticket.status === 'AVAILABLE';
+
+                              let seatStyle = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-500 cursor-pointer';
+
+                              if (ticket.is_resale && isAvailable) {
+                                seatStyle = 'bg-purple-500/10 border-purple-500/40 text-purple-300 hover:bg-purple-500/30 cursor-pointer';
+                              } else if (isHeldByMe) {
+                                seatStyle = 'bg-amber-500/30 border-amber-500 text-amber-200 ring-2 ring-amber-500/50 cursor-pointer';
+                              } else if (isHeld) {
+                                seatStyle = 'bg-amber-500/10 border-amber-500/30 text-amber-500 opacity-60 cursor-not-allowed';
+                              } else if (isSold) {
+                                seatStyle = 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed';
+                              }
+
+                              return (
+                                <button
+                                  key={ticket.id}
+                                  disabled={isSold || (isHeld && !isHeldByMe)}
+                                  onClick={() => {
+                                    if (isHeldByMe) {
+                                      handleReleaseHold(ticket.id);
+                                    } else {
+                                      handleHoldTicket(ticket);
+                                    }
+                                  }}
+                                  className={cn(
+                                    'p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center select-none active:scale-95',
+                                    seatStyle
+                                  )}
+                                >
+                                  <span className="text-[11px] font-mono font-bold">
+                                    {ticket.row}{ticket.seat_number}
+                                  </span>
+                                  <span className="text-[9px] opacity-80">${ticket.price}</span>
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Summary Bar */}
+                  {heldTicket && (
+                    <div className="mt-6 p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold text-white">
+                          Selected: {heldTicket.section} • Row {heldTicket.row} • Seat {heldTicket.seat_number}
+                        </p>
+                        <p className="text-[11px] text-emerald-400">Total: ${heldTicket.price}.00 (All fees included)</p>
+                      </div>
+                      <Button
+                        variant="default"
+                        onClick={() => setIsCheckoutModalOpen(true)}
+                        className="shadow-lg shadow-emerald-500/25"
+                      >
+                        <span>Checkout Now</span>
+                        <ArrowRight className="w-4 h-4 ml-1" />
+                      </Button>
+                    </div>
+                  )}
+                </Card>
               </div>
             </div>
           </div>
@@ -1176,82 +1243,95 @@ export default function App() {
         {/* TAB 2: P2P RESALE MARKETPLACE */}
         {activeTab === 'resale' && (
           <div>
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-bold text-white mb-1">Fan-to-Fan Resale Marketplace</h1>
-                <p className="text-xs text-slate-400">
-                  Peer-to-peer ticket reselling powered by PostgreSQL & gRPC. Barcode re-encryption guarantees zero duplicate fraud.
+                <Badge variant="outline" className="text-xs text-purple-400 border-purple-500/30 mb-2">
+                  100% Verified Secondary Marketplace
+                </Badge>
+                <h1 className="text-3xl font-extrabold text-white">Fan-to-Fan Resale Market</h1>
+                <p className="text-xs text-slate-400 mt-1 max-w-xl">
+                  Can't make the event? Fans resell authenticated passes at fair prices. Barcodes are re-encrypted on transfer with zero counterfeit risk.
                 </p>
               </div>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={loadResaleTickets}
-                className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-900 border border-slate-800 hover:border-purple-500/40 rounded-xl text-xs text-purple-300 transition"
+                className="text-purple-300 border-purple-500/30 hover:bg-purple-950/50"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingResale ? 'animate-spin' : ''}`} />
+                <RefreshCw className={cn('w-3.5 h-3.5 mr-1.5', isLoadingResale && 'animate-spin')} />
                 <span>Refresh Listings</span>
-              </button>
+              </Button>
             </div>
 
             {resaleTickets.length === 0 ? (
-              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
+              <Card className="border-slate-800 p-12 text-center space-y-4">
                 <Ticket className="w-12 h-12 text-slate-600 mx-auto" />
-                <h3 className="text-slate-300 font-semibold text-base">No tickets currently listed for resale</h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  When fans list their confirmed passes from the "My Tickets" tab, they appear live here for instant verified purchase.
+                <h3 className="text-slate-200 font-semibold text-base">No active resale listings at the moment</h3>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  When verified ticket holders list their seats from the "My Tickets" vault, they appear instantly here for verified purchase.
                 </p>
-              </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setActiveTab('events')}
+                >
+                  Browse Primary Events
+                </Button>
+              </Card>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {resaleTickets.map((ticket) => {
                   const ev = events.find((e) => e.id === ticket.event_id) || events[0];
                   const isMyListing = Boolean(activeUser.id && activeUser.id === ticket.seller_id);
-                  const sellerLabel = isMyListing
-                    ? 'You'
-                    : ticket.seller_id
-                    ? `Fan #${ticket.seller_id.slice(-5)}`
-                    : 'Verified Fan';
+                  const sellerLabel = isMyListing ? 'You' : 'Verified Fan';
 
                   return (
-                    <div key={ticket.id} className="bg-slate-900 border border-purple-500/30 hover:border-purple-500/60 transition rounded-2xl p-5 space-y-4 shadow-lg shadow-purple-500/5">
+                    <Card
+                      key={ticket.id}
+                      className="border-purple-500/30 hover:border-purple-500/60 transition-all rounded-3xl p-5 space-y-4 shadow-xl shadow-purple-500/5 bg-slate-900/80"
+                    >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-purple-400 px-2.5 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center space-x-1">
-                          <Sparkles className="w-3 h-3 text-purple-400" />
-                          <span>P2P Verified Resale</span>
-                        </span>
-                        <span className="text-[11px] text-slate-400 font-mono">
-                          Seller: <span className="text-slate-200 font-medium">{sellerLabel}</span>
+                        <Badge variant="purple" className="text-[10px] flex items-center space-x-1">
+                          <Sparkles className="w-3 h-3 mr-1" />
+                          <span>Verified Resale</span>
+                        </Badge>
+                        <span className="text-xs text-slate-400">
+                          Seller: <span className="text-slate-200 font-semibold">{sellerLabel}</span>
                         </span>
                       </div>
 
-                      <h3 className="font-bold text-white text-base">{ev?.title || 'Live Event'}</h3>
+                      <h3 className="font-bold text-white text-base leading-snug">{ev?.title || 'Live Event'}</h3>
+
                       <div className="text-xs text-slate-400 space-y-1">
                         <p>{ticket.section} • Row {ticket.row} • Seat {ticket.seat_number}</p>
-                        <p className="text-emerald-400 font-semibold flex items-center space-x-1">
+                        <p className="text-emerald-400 font-semibold flex items-center space-x-1 pt-1">
                           <ShieldCheck className="w-3.5 h-3.5" />
-                          <span>100% Anti-Fraud Guaranteed Barcode</span>
+                          <span>100% Anti-Fraud Re-Issued Barcode</span>
                         </p>
                       </div>
 
-                      <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+                      <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
                         <div>
-                          <span className="text-xs text-slate-500 block">Fan Price</span>
+                          <span className="text-[10px] text-slate-500 block">Resale Price</span>
                           <span className="text-xl font-extrabold text-purple-300 font-mono">${ticket.price}</span>
                         </div>
                         {isMyListing ? (
-                          <span className="px-3.5 py-2 bg-purple-500/10 border border-purple-500/30 text-purple-300 rounded-xl text-xs font-semibold">
+                          <Badge variant="secondary" className="text-xs py-1.5 px-3">
                             Your Active Listing
-                          </span>
+                          </Badge>
                         ) : (
-                          <button
+                          <Button
+                            variant="purple"
+                            size="sm"
                             onClick={() => handleBuyFromFan(ticket)}
-                            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-purple-600/20 flex items-center space-x-1"
                           >
-                            <span>Buy From Fan</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
+                            <span>Buy Ticket</span>
+                            <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                          </Button>
                         )}
                       </div>
-                    </div>
+                    </Card>
                   );
                 })}
               </div>
@@ -1259,76 +1339,107 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: MY TICKETS & PASSES */}
+        {/* TAB 3: MY TICKETS (APPLE/GOOGLE WALLET-STYLE PASSES) */}
         {activeTab === 'my-tickets' && (
           <div>
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-white mb-1">My Confirmed Tickets</h1>
-              <p className="text-xs text-slate-400">
-                Official passes authenticated via microservices. You can also re-list your ticket on the marketplace.
+            <div className="mb-8">
+              <Badge variant="outline" className="text-xs text-sky-400 border-sky-500/30 mb-2">
+                Digital Pass Vault
+              </Badge>
+              <h1 className="text-3xl font-extrabold text-white">My Confirmed Tickets</h1>
+              <p className="text-xs text-slate-400 mt-1">
+                Your authenticated digital entry passes. Present at stadium gates for contactless entry or list for resale.
               </p>
             </div>
 
             {orders.length === 0 ? (
-              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
+              <Card className="border-slate-800 p-12 text-center space-y-4">
                 <Ticket className="w-12 h-12 text-slate-600 mx-auto" />
-                <h3 className="text-slate-300 font-semibold text-base">No tickets purchased yet</h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Browse live events, hold your favorite seat, and complete checkout to see your digital passes here.
+                <h3 className="text-slate-200 font-semibold text-base">No tickets in your vault yet</h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  Find your favorite concert or game, reserve your seat, and complete checkout to see your digital wallet passes here.
                 </p>
-                <button
+                <Button
+                  variant="default"
                   onClick={() => setActiveTab('events')}
-                  className="mt-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold text-xs rounded-xl transition"
                 >
                   Explore Events
-                </button>
-              </div>
+                </Button>
+              </Card>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {orders.map((order) => (
                   <div
                     key={order.id}
-                    className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden"
+                    className="relative bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl transition hover:border-sky-500/40"
                   >
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          CONFIRMED PASS
-                        </span>
-                        <h3 className="text-lg font-bold text-white mt-1">{order.event_title}</h3>
-                        <p className="text-xs text-slate-400 mt-1">{order.seat_info}</p>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="text-xs text-slate-500 block">Paid</span>
-                        <span className="text-base font-bold text-emerald-400">${order.amount}</span>
-                      </div>
-                    </div>
-
-                    {/* Dynamic QR Code */}
-                    <div className="my-4 p-4 bg-slate-950 rounded-xl border border-slate-800/80 flex items-center justify-between">
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-slate-500 uppercase font-mono block">Ticket Barcode</span>
-                        <code className="text-xs text-sky-400 font-mono">{order.qr_code}</code>
-                        <span className="text-[10px] text-slate-500 block">Encrypted Entry Signature</span>
-                      </div>
-                      <div className="w-14 h-14 bg-white p-1 rounded-lg flex items-center justify-center">
-                        <div className="w-12 h-12 bg-slate-900 grid grid-cols-3 gap-0.5 p-1 rounded">
-                          <div className="bg-white"></div><div className="bg-slate-900"></div><div className="bg-white"></div>
-                          <div className="bg-slate-900"></div><div className="bg-white"></div><div className="bg-white"></div>
-                          <div className="bg-white"></div><div className="bg-slate-900"></div><div className="bg-white"></div>
+                    {/* Wallet Pass Header Banner */}
+                    <div className="p-6 bg-slate-900/90 border-b border-slate-800/80">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <Badge variant="sky" className="text-[10px] font-bold tracking-wider uppercase mb-2">
+                            AUTHENTIC MOBILE ENTRY PASS
+                          </Badge>
+                          <h3 className="text-lg font-bold text-white">{order.event_title}</h3>
+                          <p className="text-xs text-slate-300 mt-1">{order.seat_info}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-500 block">Total Paid</span>
+                          <span className="text-base font-extrabold text-emerald-400">${order.amount}.00</span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
-                      <span className="text-[10px] text-slate-500">Order ID: {order.id}</span>
-                      <button
-                        onClick={() => setResaleModalTicket(order)}
-                        className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg text-xs font-semibold transition"
-                      >
-                        Resell Ticket
-                      </button>
+                    {/* Perforated Edge Divider */}
+                    <div className="relative flex items-center justify-between px-3 py-1 bg-slate-950">
+                      <div className="w-4 h-4 rounded-full bg-slate-950 -ml-5 border-r border-slate-800"></div>
+                      <div className="flex-1 border-t-2 border-dashed border-slate-800/80 mx-2"></div>
+                      <div className="w-4 h-4 rounded-full bg-slate-950 -mr-5 border-l border-slate-800"></div>
+                    </div>
+
+                    {/* Barcode & Security Section */}
+                    <div className="p-6 space-y-4">
+                      <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800/80 flex items-center justify-between">
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono block">Entry Barcode</span>
+                          <code className="text-xs text-sky-400 font-mono font-semibold">{order.qr_code}</code>
+                          <span className="text-[10px] text-slate-500 block flex items-center space-x-1">
+                            <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                            <span>Encrypted Anti-Duplicate Signature</span>
+                          </span>
+                        </div>
+                        {/* Dynamic Scan Visual */}
+                        <div className="w-14 h-14 bg-white p-1 rounded-xl flex items-center justify-center shadow">
+                          <div className="w-12 h-12 bg-slate-950 grid grid-cols-3 gap-0.5 p-1 rounded-lg">
+                            <div className="bg-white"></div><div className="bg-slate-950"></div><div className="bg-white"></div>
+                            <div className="bg-slate-950"></div><div className="bg-white"></div><div className="bg-white"></div>
+                            <div className="bg-white"></div><div className="bg-slate-950"></div><div className="bg-white"></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2">
+                        <span className="text-[11px] text-slate-500 font-mono">Pass #{order.id.slice(-8)}</span>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addToast('info', 'Apple Wallet', 'Pass exported to Apple Wallet format.')}
+                            className="text-xs"
+                          >
+                            <Smartphone className="w-3.5 h-3.5 mr-1" />
+                            <span>Save to Wallet</span>
+                          </Button>
+                          <Button
+                            variant="purple"
+                            size="sm"
+                            onClick={() => setResaleModalTicket(order)}
+                            className="text-xs"
+                          >
+                            Resell Ticket
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1336,706 +1447,389 @@ export default function App() {
             )}
           </div>
         )}
-
-        {/* TAB 4: SYSTEM ARCHITECTURE & SAGA VISUALIZER */}
-        {activeTab === 'architecture' && (
-          <div className="space-y-6">
-            <div className="mb-4">
-              <h1 className="text-2xl font-bold text-white mb-1">Microservices Topology & Saga Workflow</h1>
-              <p className="text-xs text-slate-400">
-                Detailed runtime diagram of your deployed NestJS microservices, gRPC channels, and RabbitMQ exchanges.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2">
-                <div className="flex items-center space-x-2 text-emerald-400 text-sm font-semibold">
-                  <Layers className="w-4 h-4" />
-                  <span>API Gateway & Ingress</span>
-                </div>
-                <p className="text-xs text-slate-400">
-                  Runs on port <code className="text-emerald-300">4000</code>. Translates incoming client REST/WebSocket traffic into internal binary gRPC calls over HTTP/2.
-                </p>
-              </div>
-
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2">
-                <div className="flex items-center space-x-2 text-sky-400 text-sm font-semibold">
-                  <Cpu className="w-4 h-4" />
-                  <span>gRPC Microservices</span>
-                </div>
-                <p className="text-xs text-slate-400">
-                  Auth (:50051), Catalog (:50052), Inventory (:50053), Order (:50054). Strongly typed via shared Protobuf contracts.
-                </p>
-              </div>
-
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2">
-                <div className="flex items-center space-x-2 text-amber-400 text-sm font-semibold">
-                  <RefreshCw className="w-4 h-4" />
-                  <span>Event Bus & Saga</span>
-                </div>
-                <p className="text-xs text-slate-400">
-                  RabbitMQ topic exchange <code className="text-amber-300">ticketing.exchange</code> coordinating payment processing, ticket issuance, and auto-rollback.
-                </p>
-              </div>
-            </div>
-
-            {/* Microservice Status Matrix */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-              <h3 className="text-sm font-bold text-white mb-4">Service Endpoints & Status Matrix</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-slate-400">
-                      <th className="pb-3 font-semibold">Service</th>
-                      <th className="pb-3 font-semibold">Transport</th>
-                      <th className="pb-3 font-semibold">Port / Protocol</th>
-                      <th className="pb-3 font-semibold">Persistence</th>
-                      <th className="pb-3 font-semibold">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    <tr>
-                      <td className="py-2.5 font-medium text-white">API Gateway</td>
-                      <td>HTTP / WebSocket</td>
-                      <td>:4000 (LoadBalancer)</td>
-                      <td>Stateless</td>
-                      <td><span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[10px]">READY</span></td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 font-medium text-white">Auth Service</td>
-                      <td>gRPC</td>
-                      <td>:50051 (ClusterIP)</td>
-                      <td>PostgreSQL / JWT</td>
-                      <td><span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[10px]">READY</span></td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 font-medium text-white">Catalog Service</td>
-                      <td>gRPC</td>
-                      <td>:50052 (ClusterIP)</td>
-                      <td>PostgreSQL</td>
-                      <td><span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[10px]">READY</span></td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 font-medium text-white">Inventory Service</td>
-                      <td>gRPC + RabbitMQ</td>
-                      <td>:50053 (ClusterIP)</td>
-                      <td>Redis (TTL Lock) + PostgreSQL</td>
-                      <td><span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[10px]">READY</span></td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 font-medium text-white">Order Service</td>
-                      <td>gRPC + RabbitMQ</td>
-                      <td>:50054 (ClusterIP)</td>
-                      <td>PostgreSQL (Saga)</td>
-                      <td><span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[10px]">READY</span></td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 font-medium text-white">Payment Service</td>
-                      <td>RabbitMQ Worker</td>
-                      <td>payment_queue</td>
-                      <td>Stripe / Escrow</td>
-                      <td><span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[10px]">READY</span></td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 font-medium text-white">Notification Service</td>
-                      <td>RabbitMQ Worker</td>
-                      <td>notification_queue</td>
-                      <td>PDF Generator / Mailer</td>
-                      <td><span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[10px]">READY</span></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 5: DEDICATED SIGN IN PAGE */}
-        {activeTab === 'login' && (
-          <div className="max-w-md mx-auto my-6">
-            <div className="text-center mb-8">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 mx-auto flex items-center justify-center shadow-xl shadow-emerald-500/20 mb-4">
-                <LogIn className="w-7 h-7 text-slate-950 font-bold" />
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white">Sign In to TicketHub</h1>
-              <p className="text-xs sm:text-sm text-slate-400 mt-2">
-                Access your verified tickets, 10-minute hold privileges, and P2P resale dashboard.
-              </p>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-              {authError && (
-                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                  <span>{authError}</span>
-                </div>
-              )}
-
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  await handleLogin(authForm.email, authForm.password);
-                }}
-                className="space-y-4"
-              >
-                <div>
-                  <label className="text-xs font-medium text-slate-300 block mb-1.5">Email Address</label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
-                    <input
-                      type="email"
-                      required
-                      value={authForm.email}
-                      onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
-                      placeholder="buyer@example.com"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-slate-300 block mb-1.5">Password</label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={authForm.password}
-                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                      placeholder="••••••••"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-3.5 text-slate-500 hover:text-slate-300"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={authLoading}
-                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold rounded-xl text-sm transition shadow-lg shadow-emerald-500/25 flex items-center justify-center space-x-2"
-                >
-                  {authLoading ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <span>Sign In with JWT</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </form>
-
-              {/* Redirect to Register */}
-              <div className="pt-2 text-center text-xs text-slate-400">
-                Don't have an account yet?{' '}
-                <button
-                  type="button"
-                  onClick={() => { setActiveTab('register'); setAuthError(''); }}
-                  className="text-emerald-400 font-semibold hover:underline ml-1"
-                >
-                  Create an account
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 6: DEDICATED REGISTRATION PAGE */}
-        {activeTab === 'register' && (
-          <div className="max-w-4xl mx-auto my-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-              {/* Left Column: Platform Guarantees */}
-              <div className="space-y-6">
-                <div>
-                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    Official Microservices Platform
-                  </span>
-                  <h1 className="text-3xl font-extrabold text-white mt-3 tracking-tight">
-                    Join the Anti-Scalping Ticket Revolution
-                  </h1>
-                  <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                    Create your account to purchase authentic live concert and sports tickets with 100% money-back guarantee, or resell your extra seats at capped face value.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-start space-x-3.5">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0 text-emerald-400">
-                      <ShieldCheck className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-white">Dynamic Anti-Fraud Barcodes</h4>
-                      <p className="text-xs text-slate-400 mt-0.5">Every ticket pass is re-encrypted upon transfer, permanently revoking previous barcodes.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start space-x-3.5">
-                    <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center flex-shrink-0 text-sky-400">
-                      <Clock className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-white">10-Minute Guaranteed Seat Hold</h4>
-                      <p className="text-xs text-slate-400 mt-0.5">Atomic Redis locks protect your seat from being taken during checkout.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start space-x-3.5">
-                    <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center flex-shrink-0 text-purple-400">
-                      <Sparkles className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-white">Capped Secondary Resale</h4>
-                      <p className="text-xs text-slate-400 mt-0.5">Sell tickets at official fair prices with instant escrow payout verification.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column: Registration Form */}
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5">
-                <div className="border-b border-slate-800 pb-3">
-                  <h3 className="font-bold text-white text-lg">Create Fan Account</h3>
-                  <p className="text-xs text-slate-400">Saved directly to PostgreSQL <code className="text-emerald-300">users</code> table with Bcrypt hashing.</p>
-                </div>
-
-                {authError && (
-                  <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
-                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                    <span>{authError}</span>
-                  </div>
-                )}
-
-                <form onSubmit={handleRegister} className="space-y-4">
-                  <div>
-                    <label className="text-xs font-medium text-slate-300 block mb-1">Full Name</label>
-                    <div className="relative">
-                      <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
-                      <input
-                        type="text"
-                        required
-                        value={authForm.name}
-                        onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}
-                        placeholder="Charlie Fan"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-medium text-slate-300 block mb-1">Email Address</label>
-                    <div className="relative">
-                      <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
-                      <input
-                        type="email"
-                        required
-                        value={authForm.email}
-                        onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
-                        placeholder="charlie@example.com"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-medium text-slate-300 block mb-1">Password</label>
-                    <div className="relative">
-                      <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={authForm.password}
-                        onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                        placeholder="Minimum 6 characters"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3.5 top-3 text-slate-500 hover:text-slate-300"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-medium text-slate-300 block mb-1.5">Select Account Type</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setAuthForm({ ...authForm, role: 'BUYER' })}
-                        className={`p-3 rounded-xl border text-left transition ${
-                          authForm.role === 'BUYER'
-                            ? 'bg-emerald-500/10 border-emerald-500 text-white ring-1 ring-emerald-500'
-                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="font-semibold text-xs flex items-center justify-between">
-                          <span>Fan / Buyer</span>
-                          {authForm.role === 'BUYER' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-1">Buy & hold seats at stadium events</p>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setAuthForm({ ...authForm, role: 'SELLER' })}
-                        className={`p-3 rounded-xl border text-left transition ${
-                          authForm.role === 'SELLER'
-                            ? 'bg-purple-500/10 border-purple-500 text-white ring-1 ring-purple-500'
-                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="font-semibold text-xs flex items-center justify-between">
-                          <span>Fan Reseller</span>
-                          {authForm.role === 'SELLER' && <Check className="w-3.5 h-3.5 text-purple-400" />}
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-1">List & transfer official tickets</p>
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={authLoading}
-                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold rounded-xl text-sm transition shadow-lg shadow-emerald-500/25 flex items-center justify-center space-x-2 mt-2"
-                  >
-                    {authLoading ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <UserPlus className="w-4 h-4" />
-                        <span>Create Free Account</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-
-                <div className="pt-2 text-center text-xs text-slate-400 border-t border-slate-800">
-                  Already registered?{' '}
-                  <button
-                    type="button"
-                    onClick={() => { setActiveTab('login'); setAuthError(''); }}
-                    className="text-emerald-400 font-semibold hover:underline ml-1"
-                  >
-                    Sign in here
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 7: DEDICATED PROFILE & ACCOUNT PAGE */}
-        {activeTab === 'profile' && (
-          <div className="max-w-4xl mx-auto my-6 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8">
-              <div className="flex items-center space-x-4">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 font-black text-2xl flex items-center justify-center shadow-xl shadow-emerald-500/20">
-                  {activeUser.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <h1 className="text-2xl font-bold text-white">{activeUser.name}</h1>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${
-                      activeUser.role === 'SELLER'
-                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                    }`}>
-                      {activeUser.role} Account
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1 font-mono">{activeUser.email}</p>
-                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">Database ID: {activeUser.id}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={handleLogout}
-                  className="px-4 py-2 bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-slate-400">Tickets in Vault</span>
-                <div className="text-2xl font-extrabold text-sky-400 font-mono">{orders.length}</div>
-                <button
-                  onClick={() => setActiveTab('my-tickets')}
-                  className="text-xs text-sky-300 hover:underline flex items-center space-x-1 pt-1"
-                >
-                  <span>View Pass Barcodes</span>
-                  <ChevronRight className="w-3 h-3" />
-                </button>
-              </div>
-
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-slate-400">P2P Resale Listings</span>
-                <div className="text-2xl font-extrabold text-purple-400 font-mono">
-                  {resaleTickets.filter((t) => t.seller_id === activeUser.id).length}
-                </div>
-                <button
-                  onClick={() => setActiveTab('resale')}
-                  className="text-xs text-purple-300 hover:underline flex items-center space-x-1 pt-1"
-                >
-                  <span>View Resale Market</span>
-                  <ChevronRight className="w-3 h-3" />
-                </button>
-              </div>
-
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-slate-400">Security & Session</span>
-                <div className="text-sm font-semibold text-emerald-400 flex items-center space-x-1.5 pt-1">
-                  <BadgeCheck className="w-4 h-4" />
-                  <span>JWT Authenticated</span>
-                </div>
-                <p className="text-[11px] text-slate-500">Bcrypt + HS256 Verified</p>
-              </div>
-            </div>
-
-            {/* JWT Security Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-3">
-              <h3 className="font-bold text-white text-sm flex items-center space-x-2">
-                <Key className="w-4 h-4 text-emerald-400" />
-                <span>Active JWT Token Signature</span>
-              </h3>
-              <p className="text-xs text-slate-400">
-                This signed token proves identity on all gRPC microservice requests through the API Gateway:
-              </p>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 font-mono text-xs text-slate-300 break-all">
-                {token ? token : 'Signed in as demo user. Click Auth / Register to issue a fresh JWT.'}
-              </div>
-            </div>
-          </div>
-        )}
       </main>
+
+      {/* Modern Checkout Modal */}
+      <Dialog open={isCheckoutModalOpen} onOpenChange={setIsCheckoutModalOpen} maxWidth="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Complete Your Ticket Order</DialogTitle>
+          <DialogDescription>
+            Review your reservation and enter payment details to finalize your digital pass.
+          </DialogDescription>
+        </DialogHeader>
+
+        {heldTicket && (
+          <div className="space-y-5">
+            {/* Ticket Summary Box */}
+            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400">Event</span>
+                <span className="text-white font-semibold truncate max-w-[200px]">{selectedEvent?.title}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400">Seat Allocation</span>
+                <span className="text-white font-semibold">{heldTicket.section} • Row {heldTicket.row} • Seat {heldTicket.seat_number}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400">Hold Timer</span>
+                <span className="text-amber-400 font-mono font-bold">{formatTimer(holdTimeRemaining)}</span>
+              </div>
+              <Separator className="my-2" />
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-300 font-medium">Total Amount</span>
+                <span className="text-emerald-400 font-bold text-base">${heldTicket.price}.00</span>
+              </div>
+            </div>
+
+            {/* Payment Fields */}
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Cardholder Name</label>
+                <Input
+                  type="text"
+                  value={checkoutForm.cardName}
+                  onChange={(e) => setCheckoutForm({ ...checkoutForm, cardName: e.target.value })}
+                  placeholder="Full name on card"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Card Number</label>
+                <Input
+                  type="text"
+                  value={checkoutForm.cardNumber}
+                  onChange={(e) => setCheckoutForm({ ...checkoutForm, cardNumber: e.target.value })}
+                  icon={<CreditCard className="w-4 h-4" />}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-300 block mb-1">Expires</label>
+                  <Input
+                    type="text"
+                    value={checkoutForm.cardExpiry}
+                    onChange={(e) => setCheckoutForm({ ...checkoutForm, cardExpiry: e.target.value })}
+                    placeholder="MM/YY"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-300 block mb-1">CVC</label>
+                  <Input
+                    type="password"
+                    value={checkoutForm.cardCvc}
+                    onChange={(e) => setCheckoutForm({ ...checkoutForm, cardCvc: e.target.value })}
+                    placeholder="•••"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Subtle Simulation Toggle for testing decline */}
+            <div className="pt-2 flex items-center justify-between text-xs text-slate-400">
+              <span className="text-[11px] text-slate-500">256-Bit SSL Encrypted Checkout</span>
+              <button
+                type="button"
+                onClick={() => setCheckoutForm({ ...checkoutForm, simulateDecline: !checkoutForm.simulateDecline })}
+                className={cn(
+                  'text-[10px] px-2 py-0.5 rounded transition',
+                  checkoutForm.simulateDecline
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                    : 'text-slate-500 hover:text-slate-400'
+                )}
+              >
+                {checkoutForm.simulateDecline ? 'Simulate Decline: ON' : 'Test Mode'}
+              </button>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setIsCheckoutModalOpen(false)}
+                disabled={isProcessingCheckout}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="default"
+                disabled={isProcessingCheckout}
+                onClick={() => handleCompletePayment(checkoutForm.simulateDecline)}
+                className="w-full sm:w-auto"
+              >
+                {isProcessingCheckout ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                    <span>Processing Payment...</span>
+                  </>
+                ) : (
+                  <span>Pay ${heldTicket.price}.00</span>
+                )}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </Dialog>
 
       {/* Resale Modal */}
       {resaleModalTicket && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-white text-base">List Ticket for Resale</h3>
-              <button onClick={() => setResaleModalTicket(null)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
+        <Dialog open={Boolean(resaleModalTicket)} onOpenChange={() => setResaleModalTicket(null)} maxWidth="max-w-md">
+          <DialogHeader>
+            <DialogTitle>List Ticket on Resale Market</DialogTitle>
+            <DialogDescription>
+              Set your asking price for {resaleModalTicket.event_title}. Once sold, your barcode is invalidated and a fresh barcode is transferred to the buyer.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-slate-300 block mb-1">Your Resale Price ($ USD)</label>
+              <Input
+                type="number"
+                value={resalePriceInput}
+                onChange={(e) => setResalePriceInput(e.target.value)}
+                placeholder="100"
+              />
             </div>
 
-            <p className="text-xs text-slate-400">
-              Set your asking price for {resaleModalTicket.event_title} ({resaleModalTicket.seat_info}). Once purchased, your barcode is invalidated and a fresh barcode is transferred to the buyer.
-            </p>
+            <div className="p-3 bg-purple-950/30 border border-purple-500/30 rounded-xl text-xs text-purple-300 flex items-start space-x-2">
+              <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>TicketHub Fair-Price Policy protects fans from aggressive scalping. Payouts are transferred immediately after event completion.</span>
+            </div>
 
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">Your Resale Price ($ USD)</label>
-              <div className="relative">
-                <DollarSign className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                <input
-                  type="number"
-                  value={resalePriceInput}
-                  onChange={(e) => setResalePriceInput(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setResaleModalTicket(null)}>
+                Cancel
+              </Button>
+              <Button variant="purple" onClick={() => handleListResale(resaleModalTicket)}>
+                Confirm Listing
+              </Button>
+            </DialogFooter>
+          </div>
+        </Dialog>
+      )}
+
+      {/* Auth Modal (Sign In / Register) */}
+      <Dialog open={isAuthModalOpen} onOpenChange={setIsAuthModalOpen} maxWidth="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{authMode === 'login' ? 'Sign In to TicketHub' : 'Create Fan Account'}</DialogTitle>
+          <DialogDescription>
+            {authMode === 'login'
+              ? 'Access your mobile tickets, seat holds, and resale listings.'
+              : 'Join to reserve stadium seats and purchase verified passes.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <Tabs value={authMode} onValueChange={(val) => { setAuthMode(val as any); setAuthError(''); }}>
+          <TabsList className="grid grid-cols-2 w-full mb-4">
+            <TabsTrigger value="login">Sign In</TabsTrigger>
+            <TabsTrigger value="register">Register</TabsTrigger>
+          </TabsList>
+
+          {authError && (
+            <div className="p-3 mb-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          <TabsContent value="login">
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                await handleLogin(authForm.email, authForm.password);
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Email Address</label>
+                <Input
+                  type="email"
+                  required
+                  value={authForm.email}
+                  onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                  placeholder="name@example.com"
+                  icon={<Mail className="w-4 h-4 text-slate-500" />}
                 />
               </div>
-            </div>
 
-            <div className="pt-2 flex justify-end space-x-3">
-              <button
-                onClick={() => setResaleModalTicket(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleListResale(resaleModalTicket)}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-purple-600/20"
-              >
-                Confirm Resale Listing
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Auth Modal (Sign In / Register) */}
-      {isAuthModalOpen && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
-            <div className="flex justify-between items-center">
               <div>
-                <h3 className="font-bold text-white text-lg">
-                  {authMode === 'login' ? 'Sign In to TicketHub' : 'Create Fan Account'}
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Authenticated against PostgreSQL <code className="text-emerald-300">users</code> table with JWT signature.
-                </p>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Password</label>
+                <Input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={authForm.password}
+                  onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                  placeholder="••••••••"
+                  icon={<Lock className="w-4 h-4 text-slate-500" />}
+                  rightElement={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-slate-500 hover:text-slate-300"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  }
+                />
               </div>
-              <button
-                onClick={() => setIsAuthModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {/* Mode Tabs */}
-            <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800">
-              <button
-                type="button"
-                onClick={() => { setAuthMode('login'); setAuthError(''); }}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
-                  authMode === 'login' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => { setAuthMode('register'); setAuthError(''); }}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
-                  authMode === 'register' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Register
-              </button>
-            </div>
+              <Button type="submit" variant="default" className="w-full" disabled={authLoading}>
+                {authLoading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
+                <span>Sign In</span>
+              </Button>
+            </form>
+          </TabsContent>
 
-            {/* Error Message */}
-            {authError && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                <span>{authError}</span>
+          <TabsContent value="register">
+            <form onSubmit={handleRegister} className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Full Name</label>
+                <Input
+                  type="text"
+                  required
+                  value={authForm.name}
+                  onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}
+                  placeholder="Jane Fan"
+                  icon={<User className="w-4 h-4 text-slate-500" />}
+                />
               </div>
-            )}
 
-            {/* Login Mode */}
-            {authMode === 'login' ? (
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  await handleLogin(authForm.email, authForm.password);
-                }}
-                className="space-y-4"
-              >
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Email Address</label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                    <input
-                      type="email"
-                      required
-                      value={authForm.email}
-                      onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
-                      placeholder="buyer@example.com"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Email Address</label>
+                <Input
+                  type="email"
+                  required
+                  value={authForm.email}
+                  onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                  placeholder="jane@example.com"
+                  icon={<Mail className="w-4 h-4 text-slate-500" />}
+                />
+              </div>
 
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Password</label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                    <input
-                      type="password"
-                      required
-                      value={authForm.password}
-                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                      placeholder="••••••••"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Password</label>
+                <Input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={authForm.password}
+                  onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                  placeholder="At least 6 characters"
+                  icon={<Lock className="w-4 h-4 text-slate-500" />}
+                  rightElement={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-slate-500 hover:text-slate-300"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  }
+                />
+              </div>
 
-                <button
-                  type="submit"
-                  disabled={authLoading}
-                  className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 font-bold rounded-xl text-xs transition shadow-lg shadow-emerald-500/20"
-                >
-                  {authLoading ? 'Authenticating...' : 'Sign In with JWT'}
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleRegister} className="space-y-4">
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Full Name</label>
-                  <div className="relative">
-                    <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                    <input
-                      type="text"
-                      required
-                      value={authForm.name}
-                      onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}
-                      placeholder="Charlie Fan"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Email Address</label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                    <input
-                      type="email"
-                      required
-                      value={authForm.email}
-                      onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
-                      placeholder="charlie@example.com"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Password</label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                    <input
-                      type="password"
-                      required
-                      value={authForm.password}
-                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                      placeholder="••••••••"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Account Role</label>
-                  <select
-                    value={authForm.role}
-                    onChange={(e) => setAuthForm({ ...authForm, role: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">Account Role</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAuthForm({ ...authForm, role: 'BUYER' })}
+                    className={cn(
+                      'p-3 rounded-xl border text-left transition',
+                      authForm.role === 'BUYER'
+                        ? 'bg-emerald-500/10 border-emerald-500 text-white'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    )}
                   >
-                    <option value="BUYER">Buyer (Purchase & Hold Tickets)</option>
-                    <option value="SELLER">Seller (List Tickets on Secondary Market)</option>
-                  </select>
-                </div>
+                    <div className="font-semibold text-xs flex items-center justify-between">
+                      <span>Buyer</span>
+                      {authForm.role === 'BUYER' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">Buy & hold seats</p>
+                  </button>
 
-                <button
-                  type="submit"
-                  disabled={authLoading}
-                  className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 font-bold rounded-xl text-xs transition shadow-lg shadow-emerald-500/20"
-                >
-                  {authLoading ? 'Creating Account...' : 'Register in PostgreSQL'}
-                </button>
-              </form>
-            )}
+                  <button
+                    type="button"
+                    onClick={() => setAuthForm({ ...authForm, role: 'SELLER' })}
+                    className={cn(
+                      'p-3 rounded-xl border text-left transition',
+                      authForm.role === 'SELLER'
+                        ? 'bg-purple-500/10 border-purple-500 text-white'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    )}
+                  >
+                    <div className="font-semibold text-xs flex items-center justify-between">
+                      <span>Reseller</span>
+                      {authForm.role === 'SELLER' && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">List & transfer passes</p>
+                  </button>
+                </div>
+              </div>
+
+              <Button type="submit" variant="default" className="w-full" disabled={authLoading}>
+                {authLoading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
+                <span>Create Free Account</span>
+              </Button>
+            </form>
+          </TabsContent>
+        </Tabs>
+      </Dialog>
+
+      {/* Production Footer */}
+      <footer className="mt-auto border-t border-slate-900 bg-slate-950 px-6 py-8 text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center space-x-2">
+            <Ticket className="w-4 h-4 text-emerald-400" />
+            <span className="font-semibold text-slate-300">TicketHub Official</span>
+            <span>© {new Date().getFullYear()} TicketHub Inc. All rights reserved.</span>
+          </div>
+
+          <div className="flex items-center space-x-6">
+            <button
+              onClick={() => setIsArchModalOpen(true)}
+              className="hover:text-slate-300 transition text-[11px] underline underline-offset-4"
+            >
+              System Topology
+            </button>
+            <span className="hover:text-slate-300 transition">Terms of Service</span>
+            <span className="hover:text-slate-300 transition">Privacy Policy</span>
+            <span className="hover:text-slate-300 transition">Buyer Guarantee</span>
           </div>
         </div>
-      )}
+      </footer>
+
+      {/* Discrete Architecture Topology Modal (Clean popup for technical inspection) */}
+      <Dialog open={isArchModalOpen} onOpenChange={setIsArchModalOpen} maxWidth="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Underlying Microservices Architecture</DialogTitle>
+          <DialogDescription>
+            High-performance distributed backend topology powering TicketHub.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+              <span className="text-emerald-400 font-semibold block">API Gateway</span>
+              <span className="text-slate-400 text-[11px]">HTTP/REST & WebSocket routing into internal gRPC mesh</span>
+            </div>
+            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+              <span className="text-sky-400 font-semibold block">Elasticsearch & Redis</span>
+              <span className="text-slate-400 text-[11px]">Sub-30ms typo-tolerant BM25 search & 10m TTL locks</span>
+            </div>
+            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+              <span className="text-purple-400 font-semibold block">RabbitMQ Saga</span>
+              <span className="text-slate-400 text-[11px]">Choreographed payment escrow & automatic rollback</span>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="secondary" size="sm" onClick={() => setIsArchModalOpen(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }
