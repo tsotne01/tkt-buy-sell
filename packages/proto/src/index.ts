@@ -20,3 +20,12 @@ export const GRPC_SERVICES = {
   INVENTORY_SERVICE: 'InventoryService',
   ORDER_SERVICE: 'OrderService',
 };
+
+export const PROTO_LOADER_OPTIONS = {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+};
+

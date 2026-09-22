@@ -1,15 +1,8 @@
 {
-  "extends": "@tkt/tsconfig/base.json",
+  "extends": "@tkt/tsconfig/nest.json",
   "compilerOptions": {
-    "module": "commonjs",
-    "declaration": false,
-    "removeComments": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "allowSyntheticDefaultImports": true,
-    "target": "ES2022",
-    "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./"
-  }
+  },
+  "include": ["src/**/*"]
 }

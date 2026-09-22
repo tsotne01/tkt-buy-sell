@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: order-service
-          image: tkt-order-service:latest
+          image: tkt-order-service:v5
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50054

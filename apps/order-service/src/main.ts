@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { OrderModule } from './order.module';
-import { PROTO_PATHS, PROTO_PACKAGES } from '@tkt/proto';
+import { PROTO_PATHS, PROTO_PACKAGES, PROTO_LOADER_OPTIONS } from '@tkt/proto';
 
 async function bootstrap() {
   const app = await NestFactory.create(OrderModule);
@@ -13,6 +13,7 @@ async function bootstrap() {
       package: PROTO_PACKAGES.ORDER,
       protoPath: PROTO_PATHS.ORDER,
       url: process.env.GRPC_URL || '0.0.0.0:50054',
+      loader: PROTO_LOADER_OPTIONS,
     },
   });
 
@@ -30,6 +31,7 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
+  await app.init();
   console.log(`[OrderService] gRPC microservice running on ${process.env.GRPC_URL || '0.0.0.0:50054'}`);
   console.log(`[OrderService] RabbitMQ consumer connected to ${rabbitmqUrl}`);
 }

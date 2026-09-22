@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: auth-service
-          image: tkt-auth-service:latest
+          image: tkt-auth-service:v2
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50051

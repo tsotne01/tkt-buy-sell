@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
-import { PROTO_PATHS, PROTO_PACKAGES } from '@tkt/proto';
+import { PROTO_PATHS, PROTO_PACKAGES, PROTO_LOADER_OPTIONS } from '@tkt/proto';
 import { AuthHttpController } from './controllers/auth.controller';
 import { CatalogHttpController } from './controllers/catalog.controller';
 import { InventoryHttpController } from './controllers/inventory.controller';
@@ -23,6 +23,7 @@ const orderGrpcUrl = process.env.ORDER_GRPC_URL || 'localhost:50054';
           package: PROTO_PACKAGES.AUTH,
           protoPath: PROTO_PATHS.AUTH,
           url: authGrpcUrl,
+          loader: PROTO_LOADER_OPTIONS,
         },
       },
       {
@@ -32,6 +33,7 @@ const orderGrpcUrl = process.env.ORDER_GRPC_URL || 'localhost:50054';
           package: PROTO_PACKAGES.CATALOG,
           protoPath: PROTO_PATHS.CATALOG,
           url: catalogGrpcUrl,
+          loader: PROTO_LOADER_OPTIONS,
         },
       },
       {
@@ -41,6 +43,7 @@ const orderGrpcUrl = process.env.ORDER_GRPC_URL || 'localhost:50054';
           package: PROTO_PACKAGES.INVENTORY,
           protoPath: PROTO_PATHS.INVENTORY,
           url: inventoryGrpcUrl,
+          loader: PROTO_LOADER_OPTIONS,
         },
       },
       {
@@ -50,6 +53,7 @@ const orderGrpcUrl = process.env.ORDER_GRPC_URL || 'localhost:50054';
           package: PROTO_PACKAGES.ORDER,
           protoPath: PROTO_PATHS.ORDER,
           url: orderGrpcUrl,
+          loader: PROTO_LOADER_OPTIONS,
         },
       },
     ]),

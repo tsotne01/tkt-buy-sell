@@ -23,14 +23,29 @@ export class InventoryHttpController implements OnModuleInit {
 
   @Get('events/:eventId/tickets')
   async getTicketsForEvent(@Param('eventId') eventId: string) {
-    return firstValueFrom(this.inventoryService.getTicketsForEvent({ event_id: eventId }));
+    try {
+      const res = await firstValueFrom(
+        this.inventoryService.getTicketsForEvent({ event_id: eventId, eventId })
+      );
+      return res;
+    } catch (err: any) {
+      return { error: err.message || String(err), details: err };
+    }
   }
 
   @Post('hold')
   async reserveTicketHold(
-    @Body() body: { ticket_id: string; user_id: string; hold_duration_seconds?: number }
+    @Body() body: { ticket_id?: string; ticketId?: string; user_id?: string; userId?: string; hold_duration_seconds?: number; holdDurationSeconds?: number }
   ) {
-    const res = await firstValueFrom(this.inventoryService.reserveTicketHold(body));
+    const payload = {
+      ticket_id: body.ticket_id || body.ticketId,
+      ticketId: body.ticket_id || body.ticketId,
+      user_id: body.user_id || body.userId,
+      userId: body.user_id || body.userId,
+      hold_duration_seconds: body.hold_duration_seconds || body.holdDurationSeconds || 600,
+      holdDurationSeconds: body.hold_duration_seconds || body.holdDurationSeconds || 600,
+    };
+    const res = await firstValueFrom(this.inventoryService.reserveTicketHold(payload));
     if (!res.success) {
       throw new HttpException(res.error_message || 'Ticket hold failed', HttpStatus.CONFLICT);
     }
@@ -38,14 +53,28 @@ export class InventoryHttpController implements OnModuleInit {
   }
 
   @Post('release')
-  async releaseTicketHold(@Body() body: { ticket_id: string; user_id: string }) {
-    return firstValueFrom(this.inventoryService.releaseTicketHold(body));
+  async releaseTicketHold(@Body() body: { ticket_id?: string; ticketId?: string; user_id?: string; userId?: string }) {
+    const payload = {
+      ticket_id: body.ticket_id || body.ticketId,
+      ticketId: body.ticket_id || body.ticketId,
+      user_id: body.user_id || body.userId,
+      userId: body.user_id || body.userId,
+    };
+    return firstValueFrom(this.inventoryService.releaseTicketHold(payload));
   }
 
   @Post('resale')
   async listResaleTicket(
-    @Body() body: { ticket_id: string; seller_id: string; resale_price: number }
+    @Body() body: { ticket_id?: string; ticketId?: string; seller_id?: string; sellerId?: string; resale_price?: number; resalePrice?: number }
   ) {
-    return firstValueFrom(this.inventoryService.listResaleTicket(body));
+    const payload = {
+      ticket_id: body.ticket_id || body.ticketId,
+      ticketId: body.ticket_id || body.ticketId,
+      seller_id: body.seller_id || body.sellerId,
+      sellerId: body.seller_id || body.sellerId,
+      resale_price: body.resale_price ?? body.resalePrice ?? 0,
+      resalePrice: body.resale_price ?? body.resalePrice ?? 0,
+    };
+    return firstValueFrom(this.inventoryService.listResaleTicket(payload));
   }
 }

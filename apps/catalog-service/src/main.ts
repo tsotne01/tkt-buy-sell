@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { CatalogModule } from './catalog.module';
-import { PROTO_PATHS, PROTO_PACKAGES } from '@tkt/proto';
+import { PROTO_PATHS, PROTO_PACKAGES, PROTO_LOADER_OPTIONS } from '@tkt/proto';
 
 async function bootstrap() {
   const app = await NestFactory.createMicroservice<MicroserviceOptions>(CatalogModule, {
@@ -10,6 +10,7 @@ async function bootstrap() {
       package: PROTO_PACKAGES.CATALOG,
       protoPath: PROTO_PATHS.CATALOG,
       url: process.env.GRPC_URL || '0.0.0.0:50052',
+      loader: PROTO_LOADER_OPTIONS,
     },
   });
 

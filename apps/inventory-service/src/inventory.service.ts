@@ -25,9 +25,16 @@ export class InventoryService implements OnModuleInit {
   // In-memory fallback TTL store if Redis is connecting/unavailable locally
   private memoryHolds: Map<string, { userId: string; expiresAt: number }> = new Map();
 
-  onModuleInit() {
+  constructor() {
     this.initRedis();
     this.seedTickets();
+  }
+
+  onModuleInit() {
+    // Also ensured on lifecycle
+    if (this.tickets.size === 0) {
+      this.seedTickets();
+    }
   }
 
   private initRedis() {

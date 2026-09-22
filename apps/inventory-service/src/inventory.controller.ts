@@ -13,32 +13,43 @@ export class InventoryController {
   // ================= gRPC Handlers =================
 
   @GrpcMethod(GRPC_SERVICES.INVENTORY_SERVICE, 'GetTicketsForEvent')
-  getTicketsForEvent(data: { event_id: string }) {
-    return this.inventoryService.getTicketsForEvent(data.event_id);
+  getTicketsForEvent(data: any) {
+    const eventId = data.eventId || data.event_id;
+    this.logger.log(`[gRPC] GetTicketsForEvent received for event: ${eventId}`);
+    const result = this.inventoryService.getTicketsForEvent(eventId);
+    this.logger.log(`[gRPC] Found ${result.tickets.length} tickets`);
+    return result;
   }
 
   @GrpcMethod(GRPC_SERVICES.INVENTORY_SERVICE, 'ReserveTicketHold')
-  reserveTicketHold(data: { ticket_id: string; user_id: string; hold_duration_seconds?: number }) {
-    return this.inventoryService.reserveTicketHold(
-      data.ticket_id,
-      data.user_id,
-      data.hold_duration_seconds || 600
-    );
+  reserveTicketHold(data: any) {
+    const ticketId = data.ticketId || data.ticket_id;
+    const userId = data.userId || data.user_id;
+    const duration = data.holdDurationSeconds || data.hold_duration_seconds || 600;
+    return this.inventoryService.reserveTicketHold(ticketId, userId, duration);
   }
 
   @GrpcMethod(GRPC_SERVICES.INVENTORY_SERVICE, 'ReleaseTicketHold')
-  releaseTicketHold(data: { ticket_id: string; user_id: string }) {
-    return this.inventoryService.releaseTicketHold(data.ticket_id, data.user_id);
+  releaseTicketHold(data: any) {
+    const ticketId = data.ticketId || data.ticket_id;
+    const userId = data.userId || data.user_id;
+    return this.inventoryService.releaseTicketHold(ticketId, userId);
   }
 
   @GrpcMethod(GRPC_SERVICES.INVENTORY_SERVICE, 'ConfirmTicketSold')
-  confirmTicketSold(data: { ticket_id: string; user_id: string; order_id: string }) {
-    return this.inventoryService.confirmTicketSold(data.ticket_id, data.user_id, data.order_id);
+  confirmTicketSold(data: any) {
+    const ticketId = data.ticketId || data.ticket_id;
+    const userId = data.userId || data.user_id;
+    const orderId = data.orderId || data.order_id;
+    return this.inventoryService.confirmTicketSold(ticketId, userId, orderId);
   }
 
   @GrpcMethod(GRPC_SERVICES.INVENTORY_SERVICE, 'ListResaleTicket')
-  listResaleTicket(data: { ticket_id: string; seller_id: string; resale_price: number }) {
-    return this.inventoryService.listResaleTicket(data.ticket_id, data.seller_id, data.resale_price);
+  listResaleTicket(data: any) {
+    const ticketId = data.ticketId || data.ticket_id;
+    const sellerId = data.sellerId || data.seller_id;
+    const resalePrice = data.resalePrice || data.resale_price;
+    return this.inventoryService.listResaleTicket(ticketId, sellerId, resalePrice);
   }
 
   // ================= RabbitMQ Saga Event Handlers =================

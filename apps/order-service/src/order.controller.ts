@@ -13,23 +13,31 @@ export class OrderController {
   // ================= gRPC Handlers =================
 
   @GrpcMethod(GRPC_SERVICES.ORDER_SERVICE, 'CreateOrder')
-  async createOrder(data: { user_id: string; ticket_id: string; event_id: string; amount: number }) {
-    return this.orderService.createOrder(data);
+  async createOrder(data: any) {
+    const userId = data.userId || data.user_id;
+    const ticketId = data.ticketId || data.ticket_id;
+    const eventId = data.eventId || data.event_id;
+    const amount = Number(data.amount) || 0;
+    return this.orderService.createOrder({ user_id: userId, ticket_id: ticketId, event_id: eventId, amount });
   }
 
   @GrpcMethod(GRPC_SERVICES.ORDER_SERVICE, 'GetOrderById')
-  getOrderById(data: { order_id: string }) {
-    return this.orderService.getOrderById(data.order_id);
+  getOrderById(data: any) {
+    const orderId = data.orderId || data.order_id;
+    return this.orderService.getOrderById(orderId);
   }
 
   @GrpcMethod(GRPC_SERVICES.ORDER_SERVICE, 'GetUserOrders')
-  getUserOrders(data: { user_id: string }) {
-    return this.orderService.getUserOrders(data.user_id);
+  getUserOrders(data: any) {
+    const userId = data.userId || data.user_id;
+    return this.orderService.getUserOrders(userId);
   }
 
   @GrpcMethod(GRPC_SERVICES.ORDER_SERVICE, 'CancelOrder')
-  cancelOrder(data: { order_id: string; reason: string }) {
-    return this.orderService.cancelOrder(data.order_id, data.reason);
+  cancelOrder(data: any) {
+    const orderId = data.orderId || data.order_id;
+    const reason = data.reason || 'User cancelled';
+    return this.orderService.cancelOrder(orderId, reason);
   }
 
   // ================= RabbitMQ Saga Handlers =================

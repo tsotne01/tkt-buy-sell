@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: catalog-service
-          image: tkt-catalog-service:latest
+          image: tkt-catalog-service:v2
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50052

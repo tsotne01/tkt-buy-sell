@@ -30,6 +30,17 @@ const rabbitmqUrl = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:56
           },
         },
       },
+      {
+        name: 'NOTIFICATION_RMQ_SERVICE',
+        transport: Transport.RMQ,
+        options: {
+          urls: [rabbitmqUrl],
+          queue: 'notification_queue',
+          queueOptions: {
+            durable: true,
+          },
+        },
+      },
     ]),
   ],
   controllers: [PaymentController],

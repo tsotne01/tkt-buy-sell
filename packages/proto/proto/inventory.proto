@@ -19,7 +19,7 @@ message TicketItem {
   double price = 6;
   string status = 7; // "AVAILABLE", "HELD", "SOLD"
   string held_by_user_id = 8;
-  int64 hold_expires_at = 9; // Unix timestamp ms
+  double hold_expires_at = 9; // Unix timestamp ms
   bool is_resale = 10;
   string seller_id = 11;
 }
@@ -41,7 +41,7 @@ message ReserveTicketHoldRequest {
 message ReserveTicketHoldResponse {
   bool success = 1;
   string ticket_id = 2;
-  int64 hold_expires_at = 3;
+  double hold_expires_at = 3;
   string error_message = 4;
 }
 

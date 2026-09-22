@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: inventory-service
-          image: tkt-inventory-service:latest
+          image: tkt-inventory-service:v5
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50053

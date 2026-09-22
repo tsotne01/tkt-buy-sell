@@ -8,7 +8,8 @@ export class PaymentService {
 
   constructor(
     @Inject('ORDER_RMQ_SERVICE') private readonly orderClient: ClientProxy,
-    @Inject('INVENTORY_RMQ_SERVICE') private readonly inventoryClient: ClientProxy
+    @Inject('INVENTORY_RMQ_SERVICE') private readonly inventoryClient: ClientProxy,
+    @Inject('NOTIFICATION_RMQ_SERVICE') private readonly notificationClient: ClientProxy,
   ) {}
 
   async processOrderPayment(event: OrderCreatedEvent) {
@@ -44,8 +45,9 @@ export class PaymentService {
       timestamp: new Date().toISOString(),
     };
 
-    this.logger.log(`Payment approved (${paymentId})! Broadcasting payment.succeeded to Order and Inventory services.`);
+    this.logger.log(`Payment approved (${paymentId})! Broadcasting payment.succeeded to Order, Inventory, and Notification services.`);
     this.orderClient.emit(RABBITMQ_EVENTS.PAYMENT_SUCCEEDED, successPayload);
     this.inventoryClient.emit(RABBITMQ_EVENTS.PAYMENT_SUCCEEDED, successPayload);
+    this.notificationClient.emit(RABBITMQ_EVENTS.PAYMENT_SUCCEEDED, successPayload);
   }
 }
