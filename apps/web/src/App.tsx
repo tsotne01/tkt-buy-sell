@@ -3,7 +3,8 @@ import { io, Socket } from 'socket.io-client';
 import { 
   Ticket, Calendar, MapPin, Search, ShieldCheck, 
   Clock, CheckCircle, AlertTriangle, ArrowRight, 
-  RefreshCw, Cpu, Layers, UserCheck, DollarSign, X
+  RefreshCw, Cpu, Layers, UserCheck, DollarSign, X,
+  LogIn, LogOut, User, Lock, Mail, Tag, Sparkles
 } from 'lucide-react';
 
 interface EventItem {
@@ -45,16 +46,44 @@ interface OrderItem {
   created_at: string;
 }
 
+interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  role: 'BUYER' | 'SELLER' | string;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'events' | 'resale' | 'my-tickets' | 'architecture'>('events');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
-  const [activeUser, setActiveUser] = useState<{ id: string; name: string; role: string }>({
-    id: 'usr_buyer_1',
-    name: 'Alice Buyer',
-    role: 'BUYER',
+
+  // Authentication State
+  const [token, setToken] = useState<string>(() => localStorage.getItem('tkt_token') || '');
+  const [activeUser, setActiveUser] = useState<UserProfile>(() => {
+    const saved = localStorage.getItem('tkt_user');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    return {
+      id: 'usr_buyer_1',
+      email: 'buyer@example.com',
+      name: 'Alice Buyer',
+      role: 'BUYER',
+    };
   });
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'BUYER' });
+  const [authError, setAuthError] = useState<string>('');
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
+
+  // Secondary Resale Marketplace State
+  const [resaleTickets, setResaleTickets] = useState<TicketItem[]>([]);
+  const [isLoadingResale, setIsLoadingResale] = useState<boolean>(false);
 
   // WebSocket Live Sync State
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -126,6 +155,119 @@ export default function App() {
   const [resaleModalTicket, setResaleModalTicket] = useState<OrderItem | null>(null);
   const [resalePriceInput, setResalePriceInput] = useState<string>('120');
 
+  // Real Auth Handlers
+  const handleLogin = async (email: string, password: string): Promise<boolean> => {
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setAuthError(data.message || data.error_message || 'Invalid credentials');
+        setAuthLoading(false);
+        return false;
+      }
+      const user: UserProfile = {
+        id: data.user_id,
+        email: data.email,
+        name: data.name,
+        role: data.role,
+      };
+      setToken(data.token);
+      setActiveUser(user);
+      localStorage.setItem('tkt_token', data.token);
+      localStorage.setItem('tkt_user', JSON.stringify(user));
+      setIsAuthModalOpen(false);
+      setAuthLoading(false);
+      return true;
+    } catch (err: any) {
+      setAuthError(err.message || 'Connection failed');
+      setAuthLoading(false);
+      return false;
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(authForm),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setAuthError(data.message || data.error_message || 'Registration failed');
+        setAuthLoading(false);
+        return;
+      }
+      const user: UserProfile = {
+        id: data.user_id,
+        email: data.email,
+        name: data.name,
+        role: data.role,
+      };
+      setToken(data.token);
+      setActiveUser(user);
+      localStorage.setItem('tkt_token', data.token);
+      localStorage.setItem('tkt_user', JSON.stringify(user));
+      setIsAuthModalOpen(false);
+      setAuthLoading(false);
+    } catch (err: any) {
+      setAuthError(err.message || 'Registration failed');
+      setAuthLoading(false);
+    }
+  };
+
+  const handleQuickSwitch = async (email: string) => {
+    await handleLogin(email, 'password123');
+  };
+
+  const handleLogout = () => {
+    setToken('');
+    localStorage.removeItem('tkt_token');
+    localStorage.removeItem('tkt_user');
+    setActiveUser({
+      id: 'usr_guest',
+      email: 'guest@example.com',
+      name: 'Guest Fan',
+      role: 'GUEST',
+    });
+  };
+
+  // Load secondary resale tickets from PostgreSQL
+  const loadResaleTickets = async () => {
+    setIsLoadingResale(true);
+    try {
+      const res = await fetch('/api/inventory/resale');
+      const data = await res.json();
+      if (data && Array.isArray(data.tickets)) {
+        setResaleTickets(data.tickets);
+      }
+    } catch (err) {
+      console.error('Failed to load resale tickets', err);
+    } finally {
+      setIsLoadingResale(false);
+    }
+  };
+
+  useEffect(() => {
+    loadResaleTickets();
+  }, []);
+
+  const handleBuyFromFan = async (ticket: TicketItem) => {
+    const ev = events.find((e) => e.id === ticket.event_id) || events[0];
+    setSelectedEvent(ev);
+    setActiveTab('events');
+    await handleHoldTicket(ticket);
+  };
+
   // Load events dynamically from catalog API
   useEffect(() => {
     fetch('/api/catalog/events')
@@ -192,6 +334,7 @@ export default function App() {
 
     s.on('seatUpdated', (update: any) => {
       console.log('[WebSocket] Live seatUpdated received:', update);
+      loadResaleTickets();
       const ticketId = update.ticket_id || update.ticketId;
       if (!ticketId) return;
 
@@ -227,6 +370,7 @@ export default function App() {
 
     s.on('orderUpdated', (orderUpdate: any) => {
       console.log('[WebSocket] Live orderUpdated received:', orderUpdate);
+      loadResaleTickets();
       const orderId = orderUpdate.orderId || orderUpdate.id;
       if (orderUpdate.status === 'COMPLETED') {
         const completedOrder: OrderItem = {
@@ -523,24 +667,64 @@ export default function App() {
           </div>
         </div>
 
-        {/* User Switcher */}
-        <div className="flex items-center space-x-2">
-          <UserCheck className="w-3.5 h-3.5 text-slate-400" />
-          <span className="text-slate-400">Active User:</span>
-          <select
-            value={activeUser.id}
-            onChange={(e) => {
-              if (e.target.value === 'usr_buyer_1') {
-                setActiveUser({ id: 'usr_buyer_1', name: 'Alice Buyer', role: 'BUYER' });
-              } else {
-                setActiveUser({ id: 'usr_seller_1', name: 'Bob Seller', role: 'SELLER' });
-              }
-            }}
-            className="bg-slate-800 text-slate-200 rounded px-2 py-0.5 border border-slate-700 outline-none"
-          >
-            <option value="usr_buyer_1">Alice Buyer (Buyer Role)</option>
-            <option value="usr_seller_1">Bob Seller (Seller Role)</option>
-          </select>
+        {/* User Switcher & Auth State */}
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="flex items-center space-x-1.5 bg-slate-800/90 px-2 py-0.5 rounded border border-slate-700">
+            <UserCheck className="w-3.5 h-3.5 text-slate-400" />
+            <span className="font-semibold text-slate-200 text-xs">{activeUser.name}</span>
+            <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase ${
+              activeUser.role === 'SELLER'
+                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+            }`}>
+              {activeUser.role}
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={() => handleQuickSwitch('buyer@example.com')}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition ${
+                activeUser.email === 'buyer@example.com'
+                  ? 'bg-emerald-500 text-slate-950 font-bold'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+              }`}
+              title="Quick switch to Alice (Buyer)"
+            >
+              Alice (Buyer)
+            </button>
+            <button
+              onClick={() => handleQuickSwitch('seller@example.com')}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition ${
+                activeUser.email === 'seller@example.com'
+                  ? 'bg-purple-500 text-white font-bold'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+              }`}
+              title="Quick switch to Bob (Seller)"
+            >
+              Bob (Seller)
+            </button>
+            <button
+              onClick={() => {
+                setAuthMode('login');
+                setAuthError('');
+                setIsAuthModalOpen(true);
+              }}
+              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-medium border border-slate-700 transition flex items-center space-x-1"
+            >
+              <LogIn className="w-3 h-3 text-slate-400" />
+              <span>Auth / Register</span>
+            </button>
+            {token && (
+              <button
+                onClick={handleLogout}
+                className="px-1.5 py-0.5 text-slate-400 hover:text-rose-400 text-[11px] transition"
+                title="Sign out"
+              >
+                <LogOut className="w-3 h-3" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -908,47 +1092,82 @@ export default function App() {
         {/* TAB 2: P2P RESALE MARKETPLACE */}
         {activeTab === 'resale' && (
           <div>
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-white mb-1">Fan-to-Fan Resale Marketplace</h1>
-              <p className="text-xs text-slate-400">
-                Peer-to-peer ticket reselling with guaranteed barcode re-generation to eliminate secondary fraud.
-              </p>
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-white mb-1">Fan-to-Fan Resale Marketplace</h1>
+                <p className="text-xs text-slate-400">
+                  Peer-to-peer ticket reselling powered by PostgreSQL & gRPC. Barcode re-encryption guarantees zero duplicate fraud.
+                </p>
+              </div>
+              <button
+                onClick={loadResaleTickets}
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-900 border border-slate-800 hover:border-purple-500/40 rounded-xl text-xs text-purple-300 transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingResale ? 'animate-spin' : ''}`} />
+                <span>Refresh Listings</span>
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {events.slice(0, 3).map((event, idx) => (
-                <div key={event.id} className="bg-slate-900 border border-purple-500/30 rounded-2xl p-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-purple-400 px-2.5 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20">
-                      Verified Resale
-                    </span>
-                    <span className="text-xs text-slate-400 font-mono">Seller: Bob (usr_seller_1)</span>
-                  </div>
+            {resaleTickets.length === 0 ? (
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
+                <Ticket className="w-12 h-12 text-slate-600 mx-auto" />
+                <h3 className="text-slate-300 font-semibold text-base">No tickets currently listed for resale</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  When fans list their confirmed passes from the "My Tickets" tab, they appear live here for instant verified purchase.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {resaleTickets.map((ticket) => {
+                  const ev = events.find((e) => e.id === ticket.event_id) || events[0];
+                  const isMyListing = activeUser.id === ticket.seller_id;
+                  const sellerLabel = ticket.seller_id === 'usr_seller_1' ? 'Bob Seller' : ticket.seller_id === 'usr_buyer_1' ? 'Alice Buyer' : (ticket.seller_id || 'Verified Fan');
 
-                  <h3 className="font-bold text-white text-base">{event.title}</h3>
-                  <div className="text-xs text-slate-400 space-y-1">
-                    <p>VIP Lower • Row A • Seat {idx * 4 + 7}</p>
-                    <p className="text-emerald-400 font-semibold">100% Guaranteed Official Ticket</p>
-                  </div>
+                  return (
+                    <div key={ticket.id} className="bg-slate-900 border border-purple-500/30 hover:border-purple-500/60 transition rounded-2xl p-5 space-y-4 shadow-lg shadow-purple-500/5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-purple-400 px-2.5 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center space-x-1">
+                          <Sparkles className="w-3 h-3 text-purple-400" />
+                          <span>P2P Verified Resale</span>
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          Seller: <span className="text-slate-200 font-medium">{sellerLabel}</span>
+                        </span>
+                      </div>
 
-                  <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs text-slate-500 block">Resale Price</span>
-                      <span className="text-lg font-bold text-purple-300">${event.min_price + 15}</span>
+                      <h3 className="font-bold text-white text-base">{ev?.title || 'Live Event'}</h3>
+                      <div className="text-xs text-slate-400 space-y-1">
+                        <p>{ticket.section} • Row {ticket.row} • Seat {ticket.seat_number}</p>
+                        <p className="text-emerald-400 font-semibold flex items-center space-x-1">
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>100% Anti-Fraud Guaranteed Barcode</span>
+                        </p>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+                        <div>
+                          <span className="text-xs text-slate-500 block">Fan Price</span>
+                          <span className="text-xl font-extrabold text-purple-300 font-mono">${ticket.price}</span>
+                        </div>
+                        {isMyListing ? (
+                          <span className="px-3.5 py-2 bg-purple-500/10 border border-purple-500/30 text-purple-300 rounded-xl text-xs font-semibold">
+                            Your Active Listing
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleBuyFromFan(ticket)}
+                            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-purple-600/20 flex items-center space-x-1"
+                          >
+                            <span>Buy From Fan</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        setSelectedEvent(event);
-                        setActiveTab('events');
-                      }}
-                      className="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-purple-600/20"
-                    >
-                      Buy From Fan
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1186,6 +1405,197 @@ export default function App() {
                 Confirm Resale Listing
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Auth Modal (Sign In / Register) */}
+      {isAuthModalOpen && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-white text-lg">
+                  {authMode === 'login' ? 'Sign In to TicketHub' : 'Create Fan Account'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Authenticated against PostgreSQL <code className="text-emerald-300">users</code> table with JWT signature.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsAuthModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Mode Tabs */}
+            <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800">
+              <button
+                type="button"
+                onClick={() => { setAuthMode('login'); setAuthError(''); }}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
+                  authMode === 'login' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAuthMode('register'); setAuthError(''); }}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
+                  authMode === 'register' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Register
+              </button>
+            </div>
+
+            {/* Error Message */}
+            {authError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            {/* Login Mode */}
+            {authMode === 'login' ? (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  await handleLogin(authForm.email, authForm.password);
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Email Address</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                    <input
+                      type="email"
+                      required
+                      value={authForm.email}
+                      onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                      placeholder="buyer@example.com"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Password</label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                    <input
+                      type="password"
+                      required
+                      value={authForm.password}
+                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                      placeholder="••••••••"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 font-bold rounded-xl text-xs transition shadow-lg shadow-emerald-500/20"
+                >
+                  {authLoading ? 'Authenticating...' : 'Sign In with JWT'}
+                </button>
+
+                <div className="pt-2 border-t border-slate-800/80">
+                  <span className="text-[11px] text-slate-400 block mb-2 font-medium">Quick Demo Accounts:</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSwitch('buyer@example.com')}
+                      className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left text-xs transition"
+                    >
+                      <div className="font-semibold text-emerald-400">Alice Buyer</div>
+                      <div className="text-[10px] text-slate-500 font-mono">buyer@example.com</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSwitch('seller@example.com')}
+                      className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-purple-500/50 text-left text-xs transition"
+                    >
+                      <div className="font-semibold text-purple-400">Bob Seller</div>
+                      <div className="text-[10px] text-slate-500 font-mono">seller@example.com</div>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleRegister} className="space-y-4">
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Full Name</label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      required
+                      value={authForm.name}
+                      onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}
+                      placeholder="Charlie Fan"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Email Address</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                    <input
+                      type="email"
+                      required
+                      value={authForm.email}
+                      onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                      placeholder="charlie@example.com"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Password</label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                    <input
+                      type="password"
+                      required
+                      value={authForm.password}
+                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                      placeholder="••••••••"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Account Role</label>
+                  <select
+                    value={authForm.role}
+                    onChange={(e) => setAuthForm({ ...authForm, role: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="BUYER">Buyer (Purchase & Hold Tickets)</option>
+                    <option value="SELLER">Seller (List Tickets on Secondary Market)</option>
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 font-bold rounded-xl text-xs transition shadow-lg shadow-emerald-500/20"
+                >
+                  {authLoading ? 'Creating Account...' : 'Register in PostgreSQL'}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}
