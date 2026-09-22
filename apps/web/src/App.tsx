@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { 
   Ticket, Calendar, MapPin, Search, ShieldCheck, 
   Clock, CheckCircle, AlertTriangle, ArrowRight, 
@@ -28,6 +29,7 @@ interface TicketItem {
   status: 'AVAILABLE' | 'HELD' | 'SOLD';
   is_resale: boolean;
   seller_id?: string;
+  held_by_user_id?: string;
   hold_expires_at?: number;
 }
 
@@ -54,6 +56,10 @@ export default function App() {
     role: 'BUYER',
   });
 
+  // WebSocket Live Sync State
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [wsConnected, setWsConnected] = useState<boolean>(false);
+
   // Events & Tickets state
   const [events, setEvents] = useState<EventItem[]>([
     {
@@ -65,7 +71,7 @@ export default function App() {
       city: 'London',
       date: '2026-10-15T19:30:00Z',
       min_price: 85.0,
-      available_seats: 320,
+      available_seats: 55,
       image_url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
     },
     {
@@ -108,7 +114,7 @@ export default function App() {
 
   const [tickets, setTickets] = useState<TicketItem[]>([]);
   const [heldTicket, setHeldTicket] = useState<TicketItem | null>(null);
-  const [holdTimeRemaining, setHoldTimeRemaining] = useState<number>(600); // 10 minutes in seconds
+  const [holdTimeRemaining, setHoldTimeRemaining] = useState<number>(600);
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState<boolean>(false);
   const [sagaFeedback, setSagaFeedback] = useState<{ status: 'idle' | 'success' | 'failed'; message: string }>({
@@ -120,11 +126,157 @@ export default function App() {
   const [resaleModalTicket, setResaleModalTicket] = useState<OrderItem | null>(null);
   const [resalePriceInput, setResalePriceInput] = useState<string>('120');
 
+  // Load events dynamically from catalog API
+  useEffect(() => {
+    fetch('/api/catalog/events')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.events && data.events.length > 0) {
+          setEvents(data.events);
+          if (!selectedEvent) {
+            setSelectedEvent(data.events[0]);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Load user orders from PostgreSQL orders table
+  useEffect(() => {
+    if (!activeUser?.id) return;
+    fetch(`/api/orders/user/${activeUser.id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.orders) {
+          const loaded: OrderItem[] = data.orders.map((o: any) => ({
+            id: o.id,
+            ticket_id: o.ticket_id || o.ticketId,
+            event_id: o.event_id || o.eventId,
+            event_title: o.event_id === 'evt_1' ? 'Coldplay - Music of the Spheres' : 'Event Ticket',
+            seat_info: `Seat #${o.ticket_id || o.ticketId}`,
+            amount: Number(o.amount) || 0,
+            status: o.status,
+            qr_code: o.qr_code || o.qrCode,
+            created_at: o.created_at || o.createdAt,
+          }));
+          setOrders(loaded);
+        }
+      })
+      .catch(() => {});
+  }, [activeUser.id]);
+
+  // Establish real-time Socket.IO connection
+  useEffect(() => {
+    const s = io(window.location.origin, {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+    });
+
+    s.on('connect', () => {
+      console.log('[WebSocket] Connected! Socket ID:', s.id);
+      setWsConnected(true);
+      if (activeUser?.id) {
+        s.emit('joinUserRoom', activeUser.id);
+      }
+      if (selectedEvent?.id) {
+        s.emit('joinEventRoom', selectedEvent.id);
+      }
+    });
+
+    s.on('disconnect', () => {
+      console.log('[WebSocket] Disconnected');
+      setWsConnected(false);
+    });
+
+    s.on('seatUpdated', (update: any) => {
+      console.log('[WebSocket] Live seatUpdated received:', update);
+      const ticketId = update.ticket_id || update.ticketId;
+      if (!ticketId) return;
+
+      setTickets((prev) =>
+        prev.map((t) => {
+          if (t.id === ticketId) {
+            return {
+              ...t,
+              status: update.status || t.status,
+              held_by_user_id: update.held_by_user_id !== undefined ? update.held_by_user_id : t.held_by_user_id,
+              hold_expires_at: update.hold_expires_at !== undefined ? update.hold_expires_at : t.hold_expires_at,
+              is_resale: update.is_resale !== undefined ? update.is_resale : t.is_resale,
+              price: update.price !== undefined ? Number(update.price) : t.price,
+            };
+          }
+          return t;
+        })
+      );
+
+      // If this seat was held by us and got released or sold
+      setHeldTicket((currHeld) => {
+        if (currHeld && currHeld.id === ticketId) {
+          if (update.status === 'AVAILABLE' && update.held_by_user_id !== activeUser.id) {
+            return null;
+          }
+          if (update.status === 'SOLD') {
+            return null;
+          }
+        }
+        return currHeld;
+      });
+    });
+
+    s.on('orderUpdated', (orderUpdate: any) => {
+      console.log('[WebSocket] Live orderUpdated received:', orderUpdate);
+      const orderId = orderUpdate.orderId || orderUpdate.id;
+      if (orderUpdate.status === 'COMPLETED') {
+        const completedOrder: OrderItem = {
+          id: orderId || `ord_${Date.now()}`,
+          ticket_id: orderUpdate.ticketId || orderUpdate.ticket_id || '',
+          event_id: orderUpdate.eventId || selectedEvent?.id || '',
+          event_title: selectedEvent?.title || 'Live Event',
+          seat_info: `Reserved Seat (${orderUpdate.ticketId || ''})`,
+          amount: Number(orderUpdate.amount) || 0,
+          status: 'COMPLETED',
+          qr_code: orderUpdate.qr_code || orderUpdate.qrCode || `TKT-${orderId}-PASS`,
+          created_at: orderUpdate.timestamp || new Date().toISOString(),
+        };
+
+        setOrders((prev) => [completedOrder, ...prev.filter((o) => o.id !== orderId)]);
+        setSagaFeedback({
+          status: 'success',
+          message: `Saga Completed via RabbitMQ & WebSockets! Digital QR Pass issued for Order ${orderId}.`,
+        });
+        setIsProcessingCheckout(false);
+        setHeldTicket(null);
+      } else if (orderUpdate.status === 'CANCELLED') {
+        setSagaFeedback({
+          status: 'failed',
+          message: `Saga Compensation: ${orderUpdate.reason || 'Payment declined'}. Seat hold automatically released.`,
+        });
+        setIsProcessingCheckout(false);
+        setHeldTicket(null);
+      }
+    });
+
+    setSocket(s);
+
+    return () => {
+      s.disconnect();
+    };
+  }, [activeUser.id]);
+
+  // Join room when selected event changes
+  useEffect(() => {
+    if (socket && selectedEvent?.id) {
+      socket.emit('joinEventRoom', selectedEvent.id);
+    }
+  }, [selectedEvent?.id, socket]);
+
   // Load seats when event selected
   useEffect(() => {
     if (!selectedEvent) return;
 
-    // Fetch from backend API Gateway if available, or generate seed seats
+    // Fetch from backend API Gateway
     fetch(`/api/inventory/events/${selectedEvent.id}/tickets`)
       .then((res) => res.json())
       .then((data) => {
@@ -184,19 +336,25 @@ export default function App() {
   const handleHoldTicket = async (ticket: TicketItem) => {
     if (ticket.status !== 'AVAILABLE') return;
 
-    // Attempt backend call to API Gateway -> Inventory gRPC -> Redis
     try {
-      await fetch('/api/inventory/hold', {
+      const res = await fetch('/api/inventory/hold', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ticket_id: ticket.id,
           user_id: activeUser.id,
           hold_duration_seconds: 600,
+          event_id: selectedEvent?.id,
         }),
       });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Seat is currently locked or reserved by another customer.');
+        return;
+      }
     } catch {
-      // Fallback in UI
+      // Offline fallback
     }
 
     setHeldTicket(ticket);
@@ -205,7 +363,7 @@ export default function App() {
 
     setTickets((prev) =>
       prev.map((t) =>
-        t.id === ticket.id ? { ...t, status: 'HELD', hold_expires_at: Date.now() + 600000 } : t
+        t.id === ticket.id ? { ...t, status: 'HELD', held_by_user_id: activeUser.id, hold_expires_at: Date.now() + 600000 } : t
       )
     );
   };
@@ -218,13 +376,14 @@ export default function App() {
         body: JSON.stringify({
           ticket_id: ticketId,
           user_id: activeUser.id,
+          event_id: selectedEvent?.id,
         }),
       });
     } catch {}
 
     setHeldTicket(null);
     setTickets((prev) =>
-      prev.map((t) => (t.id === ticketId ? { ...t, status: 'AVAILABLE' } : t))
+      prev.map((t) => (t.id === ticketId ? { ...t, status: 'AVAILABLE', held_by_user_id: '' } : t))
     );
   };
 
@@ -232,7 +391,7 @@ export default function App() {
     if (!heldTicket || !selectedEvent) return;
 
     setIsProcessingCheckout(true);
-    setSagaFeedback({ status: 'idle', message: '' });
+    setSagaFeedback({ status: 'idle', message: 'Submitting order to RabbitMQ Saga...' });
 
     const chargeAmount = simulateFailure ? 999.99 : heldTicket.price;
 
@@ -250,45 +409,51 @@ export default function App() {
       });
       const orderData = await res.json();
 
-      // Simulate RabbitMQ Saga asynchronous round-trip
-      setTimeout(() => {
-        setIsProcessingCheckout(false);
-
+      // Fallback polling timeout in case WebSockets is not active
+      setTimeout(async () => {
         if (simulateFailure) {
-          // Saga Compensation: Payment Failed -> Inventory releases hold -> Order cancelled
+          setIsProcessingCheckout(false);
           setSagaFeedback({
             status: 'failed',
-            message: 'Saga Compensating Action: Payment declined! Seat hold automatically released in Redis.',
+            message: 'Saga Compensating Action: Payment declined! Seat hold automatically released in Redis and PostgreSQL.',
           });
           setTickets((prev) =>
             prev.map((t) => (t.id === heldTicket.id ? { ...t, status: 'AVAILABLE' } : t))
           );
           setHeldTicket(null);
         } else {
-          // Saga Success: Payment Succeeded -> Ticket SOLD -> Pass Issued
-          const newOrder: OrderItem = {
-            id: orderData.id || `ord_${Date.now()}`,
-            ticket_id: heldTicket.id,
-            event_id: selectedEvent.id,
-            event_title: selectedEvent.title,
-            seat_info: `${heldTicket.section} • Row ${heldTicket.row} • Seat ${heldTicket.seat_number}`,
-            amount: heldTicket.price,
-            status: 'COMPLETED',
-            qr_code: `TKT-${selectedEvent.id}-${heldTicket.id}-PASS`,
-            created_at: new Date().toISOString(),
-          };
+          if (orderData?.id) {
+            try {
+              const checkRes = await fetch(`/api/orders/${orderData.id}`);
+              const updatedOrder = await checkRes.json();
+              if (updatedOrder && updatedOrder.status === 'COMPLETED') {
+                const newOrder: OrderItem = {
+                  id: updatedOrder.id,
+                  ticket_id: heldTicket.id,
+                  event_id: selectedEvent.id,
+                  event_title: selectedEvent.title,
+                  seat_info: `${heldTicket.section} • Row ${heldTicket.row} • Seat ${heldTicket.seat_number}`,
+                  amount: heldTicket.price,
+                  status: 'COMPLETED',
+                  qr_code: updatedOrder.qr_code || `TKT-${selectedEvent.id}-${heldTicket.id}-PASS`,
+                  created_at: updatedOrder.created_at || new Date().toISOString(),
+                };
 
-          setOrders((prev) => [newOrder, ...prev]);
-          setTickets((prev) =>
-            prev.map((t) => (t.id === heldTicket.id ? { ...t, status: 'SOLD' } : t))
-          );
-          setSagaFeedback({
-            status: 'success',
-            message: `Saga Completed! Payment authorized, ticket marked SOLD, and digital pass dispatched.`,
-          });
-          setHeldTicket(null);
+                setOrders((prev) => [newOrder, ...prev.filter((o) => o.id !== updatedOrder.id)]);
+                setTickets((prev) =>
+                  prev.map((t) => (t.id === heldTicket.id ? { ...t, status: 'SOLD' } : t))
+                );
+                setSagaFeedback({
+                  status: 'success',
+                  message: 'Saga Completed! Payment authorized, ticket marked SOLD, and digital pass dispatched.',
+                });
+                setHeldTicket(null);
+                setIsProcessingCheckout(false);
+              }
+            } catch {}
+          }
         }
-      }, 1800);
+      }, 2200);
     } catch (err) {
       setIsProcessingCheckout(false);
       setSagaFeedback({
@@ -346,6 +511,16 @@ export default function App() {
           <span className="text-slate-400">Gateway: <code className="text-emerald-300">localhost:4000</code></span>
           <span className="text-slate-400">gRPC Services: <code className="text-sky-300">50051-50054</code></span>
           <span className="text-slate-400">RabbitMQ: <code className="text-amber-300">5672</code></span>
+          <span className="text-slate-600">|</span>
+          <div className="flex items-center space-x-1.5 font-medium">
+            <span className="relative flex h-2 w-2">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${wsConnected ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${wsConnected ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+            </span>
+            <span className={wsConnected ? 'text-emerald-400' : 'text-rose-400'}>
+              {wsConnected ? 'Live WebSockets: Active' : 'WebSocket: Connecting...'}
+            </span>
+          </div>
         </div>
 
         {/* User Switcher */}

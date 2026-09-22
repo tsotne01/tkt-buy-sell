@@ -41,6 +41,17 @@ const rabbitmqUrl = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:56
           },
         },
       },
+      {
+        name: 'GATEWAY_RMQ_SERVICE',
+        transport: Transport.RMQ,
+        options: {
+          urls: [rabbitmqUrl],
+          queue: 'gateway_events_queue',
+          queueOptions: {
+            durable: false,
+          },
+        },
+      },
     ]),
   ],
   controllers: [PaymentController],

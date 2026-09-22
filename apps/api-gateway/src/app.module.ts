@@ -6,6 +6,7 @@ import { CatalogHttpController } from './controllers/catalog.controller';
 import { InventoryHttpController } from './controllers/inventory.controller';
 import { OrderHttpController } from './controllers/order.controller';
 import { HealthController } from './controllers/health.controller';
+import { GatewayEventsController } from './controllers/gateway-events.controller';
 import { EventsGateway } from './gateways/events.gateway';
 
 const authGrpcUrl = process.env.AUTH_GRPC_URL || 'localhost:50051';
@@ -64,6 +65,7 @@ const orderGrpcUrl = process.env.ORDER_GRPC_URL || 'localhost:50054';
     InventoryHttpController,
     OrderHttpController,
     HealthController,
+    GatewayEventsController,
   ],
   providers: [EventsGateway],
 })

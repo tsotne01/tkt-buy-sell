@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: tkt-api-gateway:v4
+          image: tkt-api-gateway:v7
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 4000
@@ -31,6 +31,8 @@ spec:
               value: "inventory-service:50053"
             - name: ORDER_GRPC_URL
               value: "order-service:50054"
+            - name: RABBITMQ_URL
+              value: "amqp://guest:guest@rabbitmq:5672"
           readinessProbe:
             httpGet:
               path: /api/health

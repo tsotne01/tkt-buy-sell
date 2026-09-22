@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Param, Body, Inject, OnModuleInit, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Inject, OnModuleInit, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { ClientGrpc } from '@nestjs/microservices';
 import { firstValueFrom, Observable } from 'rxjs';
 import { GRPC_SERVICES } from '@tkt/proto';
+import { EventsGateway } from '../gateways/events.gateway';
 
 interface IOrderService {
   createOrder(data: any): Observable<any>;
@@ -12,9 +13,13 @@ interface IOrderService {
 
 @Controller('orders')
 export class OrderHttpController implements OnModuleInit {
+  private readonly logger = new Logger(OrderHttpController.name);
   private orderService!: IOrderService;
 
-  constructor(@Inject('ORDER_PACKAGE') private readonly client: ClientGrpc) {}
+  constructor(
+    @Inject('ORDER_PACKAGE') private readonly client: ClientGrpc,
+    private readonly eventsGateway: EventsGateway,
+  ) {}
 
   onModuleInit() {
     this.orderService = this.client.getService<IOrderService>(GRPC_SERVICES.ORDER_SERVICE);
@@ -37,7 +42,62 @@ export class OrderHttpController implements OnModuleInit {
     if (res.error_message) {
       throw new HttpException(res.error_message, HttpStatus.BAD_REQUEST);
     }
+
+    // Proactively monitor Saga completion in background and push real-time WebSocket events
+    this.monitorOrderSaga(res.id, payload.ticket_id, payload.event_id, payload.user_id);
+
     return res;
+  }
+
+  private monitorOrderSaga(orderId: string, ticketId?: string, eventId?: string, userId?: string) {
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const order = await firstValueFrom(this.orderService.getOrderById({ order_id: orderId, orderId }));
+        if (order && (order.status === 'COMPLETED' || order.status === 'CANCELLED')) {
+          clearInterval(interval);
+          if (order.status === 'COMPLETED') {
+            this.logger.log(`[OrderSaga Monitor] Order ${orderId} COMPLETED in PostgreSQL! Broadcasting SOLD via WebSockets.`);
+            this.eventsGateway.broadcastSeatUpdate(eventId || order.event_id, {
+              ticket_id: ticketId || order.ticket_id,
+              ticketId: ticketId || order.ticket_id,
+              status: 'SOLD',
+            });
+            this.eventsGateway.broadcastOrderUpdate(userId || order.user_id, {
+              orderId: order.id,
+              id: order.id,
+              ticketId: order.ticket_id,
+              eventId: order.event_id,
+              status: 'COMPLETED',
+              amount: Number(order.amount) || 0,
+              qr_code: order.qr_code || `TKT-${order.ticket_id}-${order.id}-PASS`,
+              timestamp: new Date().toISOString(),
+            });
+          } else if (order.status === 'CANCELLED') {
+            this.logger.warn(`[OrderSaga Monitor] Order ${orderId} CANCELLED. Broadcasting AVAILABLE via WebSockets.`);
+            this.eventsGateway.broadcastSeatUpdate(eventId || order.event_id, {
+              ticket_id: ticketId || order.ticket_id,
+              ticketId: ticketId || order.ticket_id,
+              status: 'AVAILABLE',
+            });
+            this.eventsGateway.broadcastOrderUpdate(userId || order.user_id, {
+              orderId: order.id,
+              id: order.id,
+              ticketId: order.ticket_id,
+              status: 'CANCELLED',
+              reason: order.error_message || 'Payment declined',
+            });
+          }
+        }
+      } catch (err: any) {
+        this.logger.debug(`[OrderSaga Monitor] Check attempt ${attempts}: ${err.message}`);
+      }
+
+      if (attempts >= 25) {
+        clearInterval(interval);
+      }
+    }, 350);
   }
 
   @Get(':id')

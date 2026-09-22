@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: tkt-web:latest
+          image: tkt-web:v2
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
