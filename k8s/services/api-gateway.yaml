@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: tkt-api-gateway:v7
+          image: tkt-api-gateway:v8
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 4000

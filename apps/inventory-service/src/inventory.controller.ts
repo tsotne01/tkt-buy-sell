@@ -52,6 +52,12 @@ export class InventoryController {
     return this.inventoryService.listResaleTicket(ticketId, sellerId, resalePrice);
   }
 
+  @GrpcMethod(GRPC_SERVICES.INVENTORY_SERVICE, 'GetResaleTickets')
+  async getResaleTickets(data: any) {
+    const eventId = data?.eventId || data?.event_id;
+    return this.inventoryService.getResaleTickets(eventId);
+  }
+
   // ================= RabbitMQ Saga Event Handlers =================
 
   @EventPattern(RABBITMQ_EVENTS.PAYMENT_SUCCEEDED)

@@ -230,6 +230,7 @@ export class InventoryService implements OnModuleInit {
     ticket.status = TicketStatus.SOLD;
     ticket.held_by_user_id = userId;
     ticket.hold_expires_at = 0;
+    ticket.is_resale = false;
     await this.ticketRepo.save(ticket);
 
     if (this.redisClient) {
@@ -247,7 +248,7 @@ export class InventoryService implements OnModuleInit {
     };
   }
 
-  async listResaleTicket(ticketId: string, sellerId: string, resalePrice: number): Promise<Ticket> {
+  async listResaleTicket(ticketId: string, sellerId: string, resalePrice: number) {
     const ticket = await this.ticketRepo.findOneBy({ id: ticketId });
     if (!ticket) {
       throw new Error('Ticket not found');
@@ -262,7 +263,49 @@ export class InventoryService implements OnModuleInit {
 
     await this.ticketRepo.save(ticket);
     this.logger.log(`Ticket ${ticketId} listed for P2P resale in DB by ${sellerId} at $${resalePrice}`);
-    return ticket;
+    return {
+      id: ticket.id,
+      event_id: ticket.event_id,
+      section: ticket.section,
+      row: ticket.row,
+      seat_number: ticket.seat_number,
+      price: Number(ticket.price),
+      status: ticket.status,
+      held_by_user_id: ticket.held_by_user_id || '',
+      hold_expires_at: ticket.hold_expires_at || 0,
+      is_resale: ticket.is_resale,
+      seller_id: ticket.seller_id || '',
+    };
+  }
+
+  async getResaleTickets(eventId?: string): Promise<{ tickets: any[] }> {
+    const where: any = {
+      is_resale: true,
+      status: TicketStatus.AVAILABLE,
+    };
+    if (eventId) {
+      where.event_id = eventId;
+    }
+    const tickets = await this.ticketRepo.find({
+      where,
+      order: { price: 'ASC' },
+    });
+    this.logger.log(`Found ${tickets.length} available P2P resale tickets in PostgreSQL`);
+    return {
+      tickets: tickets.map((t) => ({
+        id: t.id,
+        event_id: t.event_id,
+        section: t.section,
+        row: t.row,
+        seat_number: t.seat_number,
+        price: Number(t.price),
+        status: t.status,
+        held_by_user_id: t.held_by_user_id || '',
+        hold_expires_at: t.hold_expires_at || 0,
+        is_resale: t.is_resale,
+        seller_id: t.seller_id || '',
+      })),
+    };
   }
 
   private async cleanupExpiredHolds() {

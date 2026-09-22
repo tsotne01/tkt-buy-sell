@@ -10,6 +10,7 @@ interface IInventoryService {
   releaseTicketHold(data: any): Observable<any>;
   confirmTicketSold(data: any): Observable<any>;
   listResaleTicket(data: any): Observable<any>;
+  getResaleTickets(data: any): Observable<any>;
 }
 
 @Controller('inventory')
@@ -23,6 +24,18 @@ export class InventoryHttpController implements OnModuleInit {
 
   onModuleInit() {
     this.inventoryService = this.client.getService<IInventoryService>(GRPC_SERVICES.INVENTORY_SERVICE);
+  }
+
+  @Get('resale')
+  async getResaleTickets() {
+    try {
+      const res = await firstValueFrom(
+        this.inventoryService.getResaleTickets({ event_id: '', eventId: '' })
+      );
+      return res;
+    } catch (err: any) {
+      return { error: err.message || String(err), tickets: [] };
+    }
   }
 
   @Get('events/:eventId/tickets')

@@ -8,6 +8,11 @@ service InventoryService {
   rpc ReleaseTicketHold (ReleaseTicketHoldRequest) returns (ReleaseTicketHoldResponse);
   rpc ConfirmTicketSold (ConfirmTicketSoldRequest) returns (ConfirmTicketSoldResponse);
   rpc ListResaleTicket (ListResaleTicketRequest) returns (TicketItem);
+  rpc GetResaleTickets (GetResaleTicketsRequest) returns (GetTicketsForEventResponse);
+}
+
+message GetResaleTicketsRequest {
+  string event_id = 1;
 }
 
 message TicketItem {
