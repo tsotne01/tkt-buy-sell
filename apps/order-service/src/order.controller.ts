@@ -22,19 +22,19 @@ export class OrderController {
   }
 
   @GrpcMethod(GRPC_SERVICES.ORDER_SERVICE, 'GetOrderById')
-  getOrderById(data: any) {
+  async getOrderById(data: any) {
     const orderId = data.orderId || data.order_id;
     return this.orderService.getOrderById(orderId);
   }
 
   @GrpcMethod(GRPC_SERVICES.ORDER_SERVICE, 'GetUserOrders')
-  getUserOrders(data: any) {
+  async getUserOrders(data: any) {
     const userId = data.userId || data.user_id;
     return this.orderService.getUserOrders(userId);
   }
 
   @GrpcMethod(GRPC_SERVICES.ORDER_SERVICE, 'CancelOrder')
-  cancelOrder(data: any) {
+  async cancelOrder(data: any) {
     const orderId = data.orderId || data.order_id;
     const reason = data.reason || 'User cancelled';
     return this.orderService.cancelOrder(orderId, reason);
@@ -43,14 +43,14 @@ export class OrderController {
   // ================= RabbitMQ Saga Handlers =================
 
   @EventPattern(RABBITMQ_EVENTS.PAYMENT_SUCCEEDED)
-  handlePaymentSucceeded(@Payload() event: PaymentSucceededEvent) {
+  async handlePaymentSucceeded(@Payload() event: PaymentSucceededEvent) {
     this.logger.log(`[RabbitMQ Saga] Payment succeeded received for order ${event.orderId}`);
-    this.orderService.markOrderCompleted(event.orderId, event.ticketId);
+    await this.orderService.markOrderCompleted(event.orderId, event.ticketId);
   }
 
   @EventPattern(RABBITMQ_EVENTS.PAYMENT_FAILED)
-  handlePaymentFailed(@Payload() event: PaymentFailedEvent) {
+  async handlePaymentFailed(@Payload() event: PaymentFailedEvent) {
     this.logger.warn(`[RabbitMQ Saga] Payment failed received for order ${event.orderId}: ${event.reason}`);
-    this.orderService.markOrderFailed(event.orderId, event.reason);
+    await this.orderService.markOrderFailed(event.orderId, event.reason);
   }
 }

@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: order-service
-          image: tkt-order-service:v5
+          image: tkt-order-service:v6
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50054
@@ -25,6 +25,16 @@ spec:
               value: "0.0.0.0:50054"
             - name: RABBITMQ_URL
               value: "amqp://guest:guest@rabbitmq:5672"
+            - name: POSTGRES_HOST
+              value: "postgres"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              value: "postgres"
+            - name: POSTGRES_DB
+              value: "ticketing"
 ---
 apiVersion: v1
 kind: Service
