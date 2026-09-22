@@ -16,13 +16,23 @@ spec:
     spec:
       containers:
         - name: catalog-service
-          image: tkt-catalog-service:v2
+          image: tkt-catalog-service:v3
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50052
           env:
             - name: GRPC_URL
               value: "0.0.0.0:50052"
+            - name: POSTGRES_HOST
+              value: "postgres"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              value: "postgres"
+            - name: POSTGRES_DB
+              value: "ticketing"
 ---
 apiVersion: v1
 kind: Service
