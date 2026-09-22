@@ -1,8 +1,12 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Venue } from './entities/venue.entity';
 import { Event } from './entities/event.entity';
+import { Outbox } from './entities/outbox.entity';
+import { ElasticsearchService, EventDocument } from './services/elasticsearch.service';
+import { OutboxRelayService } from './services/outbox-relay.service';
+import { RABBITMQ_EVENTS } from '@tkt/common';
 
 export interface EventItem {
   id: string;
@@ -34,7 +38,12 @@ export class CatalogService implements OnModuleInit {
     @InjectRepository(Venue)
     private readonly venueRepo: Repository<Venue>,
     @InjectRepository(Event)
-    private readonly eventRepo: Repository<Event>
+    private readonly eventRepo: Repository<Event>,
+    @InjectRepository(Outbox)
+    private readonly outboxRepo: Repository<Outbox>,
+    private readonly dataSource: DataSource,
+    private readonly elasticsearchService: ElasticsearchService,
+    private readonly outboxRelayService: OutboxRelayService,
   ) {}
 
   async onModuleInit() {
@@ -113,28 +122,66 @@ export class CatalogService implements OnModuleInit {
       ]);
       this.logger.log('Events seeded successfully in PostgreSQL.');
     }
+
+    // Reconcile and bootstrap all PostgreSQL events into Elasticsearch
+    setTimeout(async () => {
+      try {
+        const allEvents = await this.eventRepo.find();
+        if (allEvents.length > 0 && this.elasticsearchService.isConnected) {
+          this.logger.log(`Bootstrapping ${allEvents.length} events into Elasticsearch...`);
+          await this.elasticsearchService.bulkIndex(allEvents as EventDocument[]);
+        }
+      } catch (err: any) {
+        this.logger.warn(`Initial Elasticsearch bootstrap delayed: ${err.message}`);
+      }
+    }, 4000);
   }
 
   async getEvents(query: { search?: string; category?: string; page?: number; limit?: number }) {
-    let events = await this.eventRepo.find();
+    const hasSearch = !!(query.search && query.search.trim() !== '');
+    const hasCategory = !!(query.category && query.category.trim() !== '' && query.category.toLowerCase() !== 'all');
 
-    if (query.category && query.category.trim() !== '') {
-      events = events.filter(
-        (e) => e.category.toLowerCase() === query.category!.toLowerCase()
+    // 1. Try Elasticsearch for fast typo-tolerant search & scored ranking
+    if (this.elasticsearchService.isConnected) {
+      try {
+        const esResult = await this.elasticsearchService.searchEvents(query);
+        this.logger.log(
+          `Elasticsearch search for '${query.search || '*'}' (category: ${query.category || 'All'}) returned ${esResult.total} hits in ${esResult.took}ms.`
+        );
+        return {
+          events: esResult.events,
+          total: esResult.total,
+          page: esResult.page,
+        };
+      } catch (err: any) {
+        this.logger.warn(`Elasticsearch search failed (${err.message}). Falling back to PostgreSQL.`);
+      }
+    }
+
+    // 2. Resilient Database Fallback: SQL-level filtering & pagination
+    const qb = this.eventRepo.createQueryBuilder('event');
+
+    if (hasCategory) {
+      qb.andWhere('LOWER(event.category) = LOWER(:category)', { category: query.category });
+    }
+
+    if (hasSearch) {
+      const term = `%${query.search!.toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(event.title) LIKE :term OR LOWER(event.city) LIKE :term OR LOWER(event.venue_name) LIKE :term)',
+        { term }
       );
     }
 
-    if (query.search && query.search.trim() !== '') {
-      const s = query.search.toLowerCase();
-      events = events.filter(
-        (e) => e.title.toLowerCase().includes(s) || e.city.toLowerCase().includes(s) || e.venue_name.toLowerCase().includes(s)
-      );
-    }
+    const page = Math.max(1, query.page || 1);
+    const limit = Math.max(1, query.limit || 20);
+    qb.skip((page - 1) * limit).take(limit);
 
+    const [events, total] = await qb.getManyAndCount();
     return {
       events,
-      total: events.length,
-      page: query.page || 1,
+      total,
+      page,
     };
   }
 
@@ -177,7 +224,27 @@ export class CatalogService implements OnModuleInit {
       image_url: data.image_url || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
     };
 
-    await this.eventRepo.save(newEvent);
+    const outboxRecord: Outbox = {
+      id: `obx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      aggregate_type: 'EVENT',
+      aggregate_id: newEvent.id,
+      event_type: RABBITMQ_EVENTS.CATALOG_EVENT_CREATED,
+      payload: newEvent,
+      status: 'PENDING',
+      created_at: new Date(),
+    };
+
+    // Atomic ACID transaction: write both event and outbox row together
+    await this.dataSource.transaction(async (manager) => {
+      await manager.save(Event, newEvent);
+      await manager.save(Outbox, outboxRecord);
+    });
+
+    this.logger.log(`Created event '${newEvent.id}' and atomic outbox record '${outboxRecord.id}'.`);
+
+    // Trigger immediate outbox relay to RabbitMQ
+    this.outboxRelayService.processPendingOutbox().catch(() => {});
+
     return newEvent;
   }
 

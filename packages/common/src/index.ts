@@ -16,6 +16,9 @@ export const RABBITMQ_EVENTS = {
   TICKET_RELEASED: 'ticket.released',
   TICKET_SOLD: 'ticket.sold',
   TICKET_RESALE_LISTED: 'ticket.resale.listed',
+
+  CATALOG_EVENT_CREATED: 'catalog.event.created',
+  CATALOG_EVENT_UPDATED: 'catalog.event.updated',
 } as const;
 
 // Enums
@@ -75,4 +78,20 @@ export interface TicketReleasedEvent {
   ticketId: string;
   userId: string;
   reason: string;
+}
+
+export interface CatalogEventPayload {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  venue_id: string;
+  venue_name: string;
+  city: string;
+  date: string;
+  min_price: number;
+  total_seats: number;
+  available_seats: number;
+  image_url: string;
+  timestamp?: string;
 }

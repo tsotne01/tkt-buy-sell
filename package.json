@@ -30,6 +30,7 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
+    "@elastic/elasticsearch": "^8.19.2",
     "@nestjs/typeorm": "^12.0.1",
     "pg": "^8.23.0",
     "typeorm": "^1.1.1"

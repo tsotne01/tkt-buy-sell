@@ -4,6 +4,10 @@ import { CatalogController } from './catalog.controller';
 import { CatalogService } from './catalog.service';
 import { Venue } from './entities/venue.entity';
 import { Event } from './entities/event.entity';
+import { Outbox } from './entities/outbox.entity';
+import { ElasticsearchService } from './services/elasticsearch.service';
+import { OutboxRelayService } from './services/outbox-relay.service';
+import { EventIndexerConsumer } from './consumers/event-indexer.consumer';
 
 @Module({
   imports: [
@@ -14,12 +18,17 @@ import { Event } from './entities/event.entity';
       username: process.env.POSTGRES_USER || 'postgres',
       password: process.env.POSTGRES_PASSWORD || 'postgres',
       database: process.env.POSTGRES_DB || 'ticketing',
-      entities: [Venue, Event],
+      entities: [Venue, Event, Outbox],
       synchronize: true,
     }),
-    TypeOrmModule.forFeature([Venue, Event]),
+    TypeOrmModule.forFeature([Venue, Event, Outbox]),
   ],
   controllers: [CatalogController],
-  providers: [CatalogService],
+  providers: [
+    CatalogService,
+    ElasticsearchService,
+    OutboxRelayService,
+    EventIndexerConsumer,
+  ],
 })
 export class CatalogModule {}

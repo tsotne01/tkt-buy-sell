@@ -59,6 +59,10 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
+  const [searchMeta, setSearchMeta] = useState<{ tookMs?: number; total: number; isSearching: boolean }>({
+    total: 4,
+    isSearching: false,
+  });
 
   // Authentication State
   const [token, setToken] = useState<string>(() => localStorage.getItem('tkt_token') || '');
@@ -275,6 +279,35 @@ export default function App() {
   useEffect(() => {
     loadResaleTickets();
   }, []);
+
+  // Live Debounced Elasticsearch Query
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      setSearchMeta((prev) => ({ ...prev, isSearching: true }));
+      const startTime = performance.now();
+      try {
+        const params = new URLSearchParams();
+        if (searchQuery.trim()) params.append('search', searchQuery.trim());
+        if (selectedCategory && selectedCategory !== 'All') params.append('category', selectedCategory);
+
+        const res = await fetch(`/api/events?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.events)) {
+            setEvents(data.events);
+            const took = Math.round(performance.now() - startTime);
+            setSearchMeta({ tookMs: took, total: data.total || data.events.length, isSearching: false });
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Live event search error:', err);
+      }
+      setSearchMeta((prev) => ({ ...prev, isSearching: false }));
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, selectedCategory]);
 
   const handleBuyFromFan = async (ticket: TicketItem) => {
     const ev = events.find((e) => e.id === ticket.event_id) || events[0];
@@ -640,12 +673,7 @@ export default function App() {
     alert(`Ticket for ${order.event_title} successfully listed on the P2P Resale Marketplace for $${price}!`);
   };
 
-  const filteredEvents = events.filter((e) => {
-    const matchesCat = selectedCategory === 'All' || e.category === selectedCategory;
-    const matchesSearch = e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          e.city.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCat && matchesSearch;
-  });
+  const filteredEvents = events;
 
   const formatTimer = (sec: number) => {
     const m = Math.floor(sec / 60);
@@ -880,33 +908,53 @@ export default function App() {
                 High-throughput ticketing powered by NestJS gRPC microservices, atomic Redis seat locking, and RabbitMQ Saga choreography.
               </p>
 
-              {/* Filters */}
-              <div className="mt-6 flex flex-col sm:flex-row gap-4">
-                <div className="relative flex-1">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search concerts, sports teams, artists, or cities..."
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
-                  />
+              {/* Filters & Elasticsearch Status */}
+              <div className="mt-6 flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search concerts, sports, artists, or venues (e.g. 'clodplay', 'wemly', 'zimmer')..."
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
+                    />
+                    {searchMeta.isSearching && (
+                      <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin absolute right-3.5 top-3.5" />
+                    )}
+                  </div>
+
+                  <div className="flex space-x-2">
+                    {['All', 'Concerts', 'Sports', 'Theater'].map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition ${
+                          selectedCategory === cat
+                            ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                            : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="flex space-x-2">
-                  {['All', 'Concerts', 'Sports', 'Theater'].map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition ${
-                        selectedCategory === cat
-                          ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                          : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
+                {/* Elasticsearch Search Speed & Typo-Tolerance Badge */}
+                <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                      ⚡ Elasticsearch 8.11 Cluster Active
+                    </span>
+                    <span className="text-slate-500 hidden sm:inline">BM25 Relevance & Typo-Tolerant (Fuzzy AUTO)</span>
+                  </div>
+                  {searchMeta.tookMs !== undefined && (
+                    <div className="text-slate-400 text-xs font-mono">
+                      {events.length} {events.length === 1 ? 'event' : 'events'} matched in <span className="text-emerald-400 font-semibold">{searchMeta.tookMs}ms</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
