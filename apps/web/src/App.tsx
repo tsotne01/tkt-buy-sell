@@ -4,7 +4,8 @@ import {
   Ticket, Calendar, MapPin, Search, ShieldCheck, 
   Clock, CheckCircle, AlertTriangle, ArrowRight, 
   RefreshCw, Cpu, Layers, UserCheck, DollarSign, X,
-  LogIn, LogOut, User, Lock, Mail, Tag, Sparkles
+  LogIn, LogOut, User, Lock, Mail, Tag, Sparkles,
+  Eye, EyeOff, UserPlus, Key, BadgeCheck, Check, ChevronRight
 } from 'lucide-react';
 
 interface EventItem {
@@ -54,7 +55,7 @@ interface UserProfile {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'events' | 'resale' | 'my-tickets' | 'architecture'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'resale' | 'my-tickets' | 'architecture' | 'login' | 'register' | 'profile'>('events');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
@@ -80,6 +81,7 @@ export default function App() {
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'BUYER' });
   const [authError, setAuthError] = useState<string>('');
   const [authLoading, setAuthLoading] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState<boolean>(false);
 
   // Secondary Resale Marketplace State
   const [resaleTickets, setResaleTickets] = useState<TicketItem[]>([]);
@@ -183,6 +185,13 @@ export default function App() {
       localStorage.setItem('tkt_user', JSON.stringify(user));
       setIsAuthModalOpen(false);
       setAuthLoading(false);
+      if (activeTab === 'login' || activeTab === 'register') {
+        setActiveTab('events');
+      }
+      setSagaFeedback({
+        status: 'success',
+        message: `Signed in as ${user.name} (${user.role}). JWT token verified.`,
+      });
       return true;
     } catch (err: any) {
       setAuthError(err.message || 'Connection failed');
@@ -219,6 +228,11 @@ export default function App() {
       localStorage.setItem('tkt_user', JSON.stringify(user));
       setIsAuthModalOpen(false);
       setAuthLoading(false);
+      setActiveTab('events');
+      setSagaFeedback({
+        status: 'success',
+        message: `Welcome to TicketHub, ${user.name}! Your account has been registered in PostgreSQL with JWT authentication.`,
+      });
     } catch (err: any) {
       setAuthError(err.message || 'Registration failed');
       setAuthLoading(false);
@@ -238,6 +252,11 @@ export default function App() {
       email: 'guest@example.com',
       name: 'Guest Fan',
       role: 'GUEST',
+    });
+    setActiveTab('events');
+    setSagaFeedback({
+      status: 'idle',
+      message: '',
     });
   };
 
@@ -748,7 +767,7 @@ export default function App() {
           <nav className="flex items-center space-x-1 sm:space-x-2">
             <button
               onClick={() => { setActiveTab('events'); setSelectedEvent(null); }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${
                 activeTab === 'events' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -756,15 +775,15 @@ export default function App() {
             </button>
             <button
               onClick={() => { setActiveTab('resale'); setSelectedEvent(null); }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${
                 activeTab === 'resale' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               P2P Resale
             </button>
             <button
-              onClick={() => setActiveTab('my-tickets')}
-              className={`relative px-4 py-2 rounded-lg text-sm font-medium transition ${
+              onClick={() => { setActiveTab('my-tickets'); setSelectedEvent(null); }}
+              className={`relative px-3.5 py-2 rounded-lg text-sm font-medium transition ${
                 activeTab === 'my-tickets' ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -774,14 +793,52 @@ export default function App() {
               )}
             </button>
             <button
-              onClick={() => setActiveTab('architecture')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-1.5 ${
+              onClick={() => { setActiveTab('architecture'); setSelectedEvent(null); }}
+              className={`px-3.5 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-1.5 ${
                 activeTab === 'architecture' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <Cpu className="w-4 h-4" />
-              <span>Microservices Map</span>
+              <span className="hidden md:inline">Microservices</span>
             </button>
+
+            <div className="h-5 w-px bg-slate-800 mx-1 hidden sm:block"></div>
+
+            {token && activeUser.role !== 'GUEST' ? (
+              <button
+                onClick={() => { setActiveTab('profile'); setSelectedEvent(null); }}
+                className={`px-3.5 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 ${
+                  activeTab === 'profile'
+                    ? 'bg-slate-800 text-white border border-slate-700 shadow'
+                    : 'text-slate-300 hover:bg-slate-800/60 border border-transparent'
+                }`}
+                title="View your account & security profile"
+              >
+                <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 font-extrabold text-[10px] flex items-center justify-center">
+                  {activeUser.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                </div>
+                <span className="text-xs">{activeUser.name.split(' ')[0]}</span>
+              </button>
+            ) : (
+              <div className="flex items-center space-x-1.5">
+                <button
+                  onClick={() => { setActiveTab('login'); setAuthError(''); setSelectedEvent(null); }}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                    activeTab === 'login' ? 'bg-slate-800 text-white border border-slate-700' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => { setActiveTab('register'); setAuthError(''); setSelectedEvent(null); }}
+                  className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition shadow-lg shadow-emerald-500/20 ${
+                    activeTab === 'register' ? 'bg-emerald-400 text-slate-950' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                  }`}
+                >
+                  Register
+                </button>
+              </div>
+            )}
           </nav>
         </div>
       </header>
@@ -1357,6 +1414,402 @@ export default function App() {
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: DEDICATED SIGN IN PAGE */}
+        {activeTab === 'login' && (
+          <div className="max-w-md mx-auto my-6">
+            <div className="text-center mb-8">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 mx-auto flex items-center justify-center shadow-xl shadow-emerald-500/20 mb-4">
+                <LogIn className="w-7 h-7 text-slate-950 font-bold" />
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white">Sign In to TicketHub</h1>
+              <p className="text-xs sm:text-sm text-slate-400 mt-2">
+                Access your verified tickets, 10-minute hold privileges, and P2P resale dashboard.
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+              {authError && (
+                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>{authError}</span>
+                </div>
+              )}
+
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  await handleLogin(authForm.email, authForm.password);
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="text-xs font-medium text-slate-300 block mb-1.5">Email Address</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                    <input
+                      type="email"
+                      required
+                      value={authForm.email}
+                      onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                      placeholder="buyer@example.com"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-slate-300 block mb-1.5">Password</label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={authForm.password}
+                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                      placeholder="••••••••"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-3.5 text-slate-500 hover:text-slate-300"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold rounded-xl text-sm transition shadow-lg shadow-emerald-500/25 flex items-center justify-center space-x-2"
+                >
+                  {authLoading ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <span>Sign In with JWT</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* Quick Switch Demo Accounts */}
+              <div className="pt-4 border-t border-slate-800">
+                <span className="text-xs text-slate-400 font-medium block mb-2.5">Instant Test Credentials:</span>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickSwitch('buyer@example.com')}
+                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition group"
+                  >
+                    <div className="font-semibold text-xs text-emerald-400 group-hover:text-emerald-300">Alice Buyer</div>
+                    <div className="text-[10px] text-slate-500 font-mono mt-0.5">buyer@example.com</div>
+                    <span className="inline-block mt-1 text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">BUYER</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickSwitch('seller@example.com')}
+                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-purple-500/50 text-left transition group"
+                  >
+                    <div className="font-semibold text-xs text-purple-400 group-hover:text-purple-300">Bob Seller</div>
+                    <div className="text-[10px] text-slate-500 font-mono mt-0.5">seller@example.com</div>
+                    <span className="inline-block mt-1 text-[9px] px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 font-bold">SELLER</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Redirect to Register */}
+              <div className="pt-2 text-center text-xs text-slate-400">
+                Don't have an account yet?{' '}
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('register'); setAuthError(''); }}
+                  className="text-emerald-400 font-semibold hover:underline ml-1"
+                >
+                  Create an account
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 6: DEDICATED REGISTRATION PAGE */}
+        {activeTab === 'register' && (
+          <div className="max-w-4xl mx-auto my-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+              {/* Left Column: Platform Guarantees */}
+              <div className="space-y-6">
+                <div>
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    Official Microservices Platform
+                  </span>
+                  <h1 className="text-3xl font-extrabold text-white mt-3 tracking-tight">
+                    Join the Anti-Scalping Ticket Revolution
+                  </h1>
+                  <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                    Create your account to purchase authentic live concert and sports tickets with 100% money-back guarantee, or resell your extra seats at capped face value.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-start space-x-3.5">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0 text-emerald-400">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">Dynamic Anti-Fraud Barcodes</h4>
+                      <p className="text-xs text-slate-400 mt-0.5">Every ticket pass is re-encrypted upon transfer, permanently revoking previous barcodes.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start space-x-3.5">
+                    <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center flex-shrink-0 text-sky-400">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">10-Minute Guaranteed Seat Hold</h4>
+                      <p className="text-xs text-slate-400 mt-0.5">Atomic Redis locks protect your seat from being taken during checkout.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start space-x-3.5">
+                    <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center flex-shrink-0 text-purple-400">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">Capped Secondary Resale</h4>
+                      <p className="text-xs text-slate-400 mt-0.5">Sell tickets at official fair prices with instant escrow payout verification.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Registration Form */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5">
+                <div className="border-b border-slate-800 pb-3">
+                  <h3 className="font-bold text-white text-lg">Create Fan Account</h3>
+                  <p className="text-xs text-slate-400">Saved directly to PostgreSQL <code className="text-emerald-300">users</code> table with Bcrypt hashing.</p>
+                </div>
+
+                {authError && (
+                  <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                    <span>{authError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleRegister} className="space-y-4">
+                  <div>
+                    <label className="text-xs font-medium text-slate-300 block mb-1">Full Name</label>
+                    <div className="relative">
+                      <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                      <input
+                        type="text"
+                        required
+                        value={authForm.name}
+                        onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}
+                        placeholder="Charlie Fan"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-300 block mb-1">Email Address</label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                      <input
+                        type="email"
+                        required
+                        value={authForm.email}
+                        onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                        placeholder="charlie@example.com"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-300 block mb-1">Password</label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={authForm.password}
+                        onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                        placeholder="Minimum 6 characters"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3.5 top-3 text-slate-500 hover:text-slate-300"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-300 block mb-1.5">Select Account Type</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setAuthForm({ ...authForm, role: 'BUYER' })}
+                        className={`p-3 rounded-xl border text-left transition ${
+                          authForm.role === 'BUYER'
+                            ? 'bg-emerald-500/10 border-emerald-500 text-white ring-1 ring-emerald-500'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="font-semibold text-xs flex items-center justify-between">
+                          <span>Fan / Buyer</span>
+                          {authForm.role === 'BUYER' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1">Buy & hold seats at stadium events</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setAuthForm({ ...authForm, role: 'SELLER' })}
+                        className={`p-3 rounded-xl border text-left transition ${
+                          authForm.role === 'SELLER'
+                            ? 'bg-purple-500/10 border-purple-500 text-white ring-1 ring-purple-500'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="font-semibold text-xs flex items-center justify-between">
+                          <span>Fan Reseller</span>
+                          {authForm.role === 'SELLER' && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1">List & transfer official tickets</p>
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold rounded-xl text-sm transition shadow-lg shadow-emerald-500/25 flex items-center justify-center space-x-2 mt-2"
+                  >
+                    {authLoading ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <UserPlus className="w-4 h-4" />
+                        <span>Create Free Account</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <div className="pt-2 text-center text-xs text-slate-400 border-t border-slate-800">
+                  Already registered?{' '}
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('login'); setAuthError(''); }}
+                    className="text-emerald-400 font-semibold hover:underline ml-1"
+                  >
+                    Sign in here
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 7: DEDICATED PROFILE & ACCOUNT PAGE */}
+        {activeTab === 'profile' && (
+          <div className="max-w-4xl mx-auto my-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8">
+              <div className="flex items-center space-x-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 font-black text-2xl flex items-center justify-center shadow-xl shadow-emerald-500/20">
+                  {activeUser.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h1 className="text-2xl font-bold text-white">{activeUser.name}</h1>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${
+                      activeUser.role === 'SELLER'
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    }`}>
+                      {activeUser.role} Account
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 font-mono">{activeUser.email}</p>
+                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">Database ID: {activeUser.id}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleLogout}
+                  className="px-4 py-2 bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-1">
+                <span className="text-xs text-slate-400">Tickets in Vault</span>
+                <div className="text-2xl font-extrabold text-sky-400 font-mono">{orders.length}</div>
+                <button
+                  onClick={() => setActiveTab('my-tickets')}
+                  className="text-xs text-sky-300 hover:underline flex items-center space-x-1 pt-1"
+                >
+                  <span>View Pass Barcodes</span>
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-1">
+                <span className="text-xs text-slate-400">P2P Resale Listings</span>
+                <div className="text-2xl font-extrabold text-purple-400 font-mono">
+                  {resaleTickets.filter((t) => t.seller_id === activeUser.id).length}
+                </div>
+                <button
+                  onClick={() => setActiveTab('resale')}
+                  className="text-xs text-purple-300 hover:underline flex items-center space-x-1 pt-1"
+                >
+                  <span>View Resale Market</span>
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-1">
+                <span className="text-xs text-slate-400">Security & Session</span>
+                <div className="text-sm font-semibold text-emerald-400 flex items-center space-x-1.5 pt-1">
+                  <BadgeCheck className="w-4 h-4" />
+                  <span>JWT Authenticated</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Bcrypt + HS256 Verified</p>
+              </div>
+            </div>
+
+            {/* JWT Security Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-3">
+              <h3 className="font-bold text-white text-sm flex items-center space-x-2">
+                <Key className="w-4 h-4 text-emerald-400" />
+                <span>Active JWT Token Signature</span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                This signed token proves identity on all gRPC microservice requests through the API Gateway:
+              </p>
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 font-mono text-xs text-slate-300 break-all">
+                {token ? token : 'Signed in as demo user. Click Auth / Register to issue a fresh JWT.'}
               </div>
             </div>
           </div>
