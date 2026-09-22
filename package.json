@@ -1,0 +1,31 @@
+{
+  "name": "tkt-buy-sell-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ticket Buy/Sell Microservices Platform with NestJS, gRPC, RabbitMQ, React, and Kubernetes",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:gateway": "npm --workspace=apps/api-gateway run start:dev",
+    "dev:auth": "npm --workspace=apps/auth-service run start:dev",
+    "dev:catalog": "npm --workspace=apps/catalog-service run start:dev",
+    "dev:inventory": "npm --workspace=apps/inventory-service run start:dev",
+    "dev:order": "npm --workspace=apps/order-service run start:dev",
+    "dev:payment": "npm --workspace=apps/payment-service run start:dev",
+    "dev:notification": "npm --workspace=apps/notification-service run start:dev",
+    "dev:web": "npm --workspace=apps/web run dev",
+    "k8s:apply-infra": "kubectl apply -f k8s/infra/",
+    "k8s:apply-services": "kubectl apply -f k8s/services/",
+    "k8s:apply-all": "kubectl apply -f k8s/infra/ && kubectl apply -f k8s/services/ && kubectl apply -f k8s/ingress/",
+    "infra:up": "docker compose -f docker-compose.infra.yml up -d",
+    "infra:down": "docker compose -f docker-compose.infra.yml down"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "concurrently": "^9.1.0",
+    "rimraf": "^6.0.1"
+  }
+}
