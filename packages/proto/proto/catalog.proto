@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package catalog;
+
+service CatalogService {
+  rpc GetEvents (GetEventsRequest) returns (GetEventsResponse);
+  rpc GetEventById (GetEventByIdRequest) returns (EventResponse);
+  rpc CreateEvent (CreateEventRequest) returns (EventResponse);
+  rpc GetVenues (GetVenuesRequest) returns (GetVenuesResponse);
+}
+
+message EventResponse {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  string category = 4;
+  string venue_id = 5;
+  string venue_name = 6;
+  string city = 7;
+  string date = 8;
+  double min_price = 9;
+  int32 total_seats = 10;
+  int32 available_seats = 11;
+  string image_url = 12;
+}
+
+message GetEventsRequest {
+  string search = 1;
+  string category = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+
+message GetEventsResponse {
+  repeated EventResponse events = 1;
+  int32 total = 2;
+  int32 page = 3;
+}
+
+message GetEventByIdRequest {
+  string id = 1;
+}
+
+message CreateEventRequest {
+  string title = 1;
+  string description = 2;
+  string category = 3;
+  string venue_id = 4;
+  string date = 5;
+  double min_price = 6;
+  int32 total_seats = 7;
+  string image_url = 8;
+}
+
+message GetVenuesRequest {}
+
+message VenueItem {
+  string id = 1;
+  string name = 2;
+  string city = 3;
+  int32 capacity = 4;
+}
+
+message GetVenuesResponse {
+  repeated VenueItem venues = 1;
+}

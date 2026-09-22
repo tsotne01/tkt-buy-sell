@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package order;
+
+service OrderService {
+  rpc CreateOrder (CreateOrderRequest) returns (OrderResponse);
+  rpc GetOrderById (GetOrderByIdRequest) returns (OrderResponse);
+  rpc GetUserOrders (GetUserOrdersRequest) returns (GetUserOrdersResponse);
+  rpc CancelOrder (CancelOrderRequest) returns (OrderResponse);
+}
+
+message OrderResponse {
+  string id = 1;
+  string user_id = 2;
+  string ticket_id = 3;
+  string event_id = 4;
+  double amount = 5;
+  string status = 6; // "PENDING", "COMPLETED", "CANCELLED", "EXPIRED"
+  string created_at = 7;
+  string qr_code = 8;
+  string error_message = 9;
+}
+
+message CreateOrderRequest {
+  string user_id = 1;
+  string ticket_id = 2;
+  string event_id = 3;
+  double amount = 4;
+}
+
+message GetOrderByIdRequest {
+  string order_id = 1;
+}
+
+message GetUserOrdersRequest {
+  string user_id = 1;
+}
+
+message GetUserOrdersResponse {
+  repeated OrderResponse orders = 1;
+}
+
+message CancelOrderRequest {
+  string order_id = 1;
+  string reason = 2;
+}

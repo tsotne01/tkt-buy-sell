@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package inventory;
+
+service InventoryService {
+  rpc GetTicketsForEvent (GetTicketsForEventRequest) returns (GetTicketsForEventResponse);
+  rpc ReserveTicketHold (ReserveTicketHoldRequest) returns (ReserveTicketHoldResponse);
+  rpc ReleaseTicketHold (ReleaseTicketHoldRequest) returns (ReleaseTicketHoldResponse);
+  rpc ConfirmTicketSold (ConfirmTicketSoldRequest) returns (ConfirmTicketSoldResponse);
+  rpc ListResaleTicket (ListResaleTicketRequest) returns (TicketItem);
+}
+
+message TicketItem {
+  string id = 1;
+  string event_id = 2;
+  string section = 3;
+  string row = 4;
+  int32 seat_number = 5;
+  double price = 6;
+  string status = 7; // "AVAILABLE", "HELD", "SOLD"
+  string held_by_user_id = 8;
+  int64 hold_expires_at = 9; // Unix timestamp ms
+  bool is_resale = 10;
+  string seller_id = 11;
+}
+
+message GetTicketsForEventRequest {
+  string event_id = 1;
+}
+
+message GetTicketsForEventResponse {
+  repeated TicketItem tickets = 1;
+}
+
+message ReserveTicketHoldRequest {
+  string ticket_id = 1;
+  string user_id = 2;
+  int32 hold_duration_seconds = 3; // e.g. 600 (10 mins)
+}
+
+message ReserveTicketHoldResponse {
+  bool success = 1;
+  string ticket_id = 2;
+  int64 hold_expires_at = 3;
+  string error_message = 4;
+}
+
+message ReleaseTicketHoldRequest {
+  string ticket_id = 1;
+  string user_id = 2;
+}
+
+message ReleaseTicketHoldResponse {
+  bool success = 1;
+  string ticket_id = 2;
+  string message = 3;
+}
+
+message ConfirmTicketSoldRequest {
+  string ticket_id = 1;
+  string user_id = 2;
+  string order_id = 3;
+}
+
+message ConfirmTicketSoldResponse {
+  bool success = 1;
+  string ticket_id = 2;
+  string qr_code = 3;
+}
+
+message ListResaleTicketRequest {
+  string ticket_id = 1;
+  string seller_id = 2;
+  double resale_price = 3;
+}
