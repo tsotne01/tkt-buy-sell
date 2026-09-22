@@ -78,22 +78,7 @@ export class InventoryService implements OnModuleInit {
       }
     }
 
-    // Seed one resale ticket for demonstration
-    ticketsToSeed.push({
-      id: 'tkt_evt1_resale_99',
-      event_id: 'evt_1',
-      section: 'VIP Lower',
-      row: 'A',
-      seat_number: 99,
-      price: 160,
-      status: TicketStatus.AVAILABLE,
-      held_by_user_id: '',
-      hold_expires_at: 0,
-      is_resale: true,
-      seller_id: 'usr_seller_1',
-    });
-
-    // Also seed a few tickets for evt_2, evt_3, evt_4
+    // Seed a few tickets for evt_2, evt_3, evt_4
     const otherEvents = ['evt_2', 'evt_3', 'evt_4'];
     for (const evtId of otherEvents) {
       for (let s = 1; s <= 10; s++) {

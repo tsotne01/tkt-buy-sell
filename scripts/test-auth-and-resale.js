@@ -1,4 +1,4 @@
-// scripts/test-auth-and-resale.js: Automated Verification for Auth & Secondary Resale Flow
+// scripts/test-auth-and-resale.js: Automated Verification for Dynamic Auth & Secondary Resale Flow
 const assert = require('assert');
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:4000';
@@ -22,63 +22,77 @@ async function sleep(ms) {
 
 async function run() {
   console.log('======================================================');
-  console.log('[Test] Secondary Resale Marketplace & JWT Auth Verification');
+  console.log('[Test] Dynamic User Registration, Login & Resale Flow');
   console.log(`Gateway: ${GATEWAY_URL}`);
   console.log('======================================================\n');
 
-  // --- Step 1: Alice Login ---
-  console.log('[1/5] Authenticating Alice (Buyer)...');
-  const aliceRes = await request('/api/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email: 'buyer@example.com', password: 'password123' }),
-  });
-  assert.strictEqual(aliceRes.status, 201, `Alice login failed: ${JSON.stringify(aliceRes.data)}`);
-  assert.strictEqual(aliceRes.data.success, true);
-  assert.strictEqual(aliceRes.data.role, 'BUYER');
-  assert.strictEqual(aliceRes.data.email, 'buyer@example.com');
-  assert.ok(aliceRes.data.token, 'Alice JWT token should be present');
-  console.log(`  -> Alice authenticated successfully! UserID: ${aliceRes.data.user_id}, Role: ${aliceRes.data.role}`);
+  const timestamp = Date.now();
+  const buyerEmail = `buyer_${timestamp}@example.com`;
+  const sellerEmail = `seller_${timestamp}@example.com`;
+  const password = 'realSecurePassword123!';
 
-  // --- Step 2: Bob Login ---
-  console.log('\n[2/5] Authenticating Bob (Seller)...');
-  const bobRes = await request('/api/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email: 'seller@example.com', password: 'password123' }),
-  });
-  assert.strictEqual(bobRes.status, 201, `Bob login failed: ${JSON.stringify(bobRes.data)}`);
-  assert.strictEqual(bobRes.data.success, true);
-  assert.strictEqual(bobRes.data.role, 'SELLER');
-  assert.strictEqual(bobRes.data.email, 'seller@example.com');
-  assert.ok(bobRes.data.token, 'Bob JWT token should be present');
-  console.log(`  -> Bob authenticated successfully! UserID: ${bobRes.data.user_id}, Role: ${bobRes.data.role}`);
-
-  // --- Step 3: Register New Fan ---
-  const newEmail = `fan_${Date.now()}@example.com`;
-  console.log(`\n[3/5] Registering new fan account (${newEmail})...`);
-  const regRes = await request('/api/auth/register', {
+  // --- Step 1: Register New Buyer ---
+  console.log(`[1/5] Registering new Buyer account (${buyerEmail})...`);
+  const buyerReg = await request('/api/auth/register', {
     method: 'POST',
     body: JSON.stringify({
-      email: newEmail,
-      password: 'password123',
-      name: 'Charlie Fan',
+      email: buyerEmail,
+      password,
+      name: 'Dynamic Buyer',
       role: 'BUYER',
     }),
   });
-  assert.strictEqual(regRes.status, 201, `Registration failed: ${JSON.stringify(regRes.data)}`);
-  assert.strictEqual(regRes.data.success, true);
-  assert.strictEqual(regRes.data.name, 'Charlie Fan');
-  assert.ok(regRes.data.user_id.startsWith('usr_'));
-  console.log(`  -> New fan registered successfully! UserID: ${regRes.data.user_id}, Name: ${regRes.data.name}`);
+  assert.strictEqual(buyerReg.status, 201, `Buyer registration failed: ${JSON.stringify(buyerReg.data)}`);
+  assert.strictEqual(buyerReg.data.success, true);
+  assert.strictEqual(buyerReg.data.role, 'BUYER');
+  assert.strictEqual(buyerReg.data.email, buyerEmail);
+  assert.ok(buyerReg.data.token, 'Buyer JWT token should be returned');
+  const buyerUserId = buyerReg.data.user_id;
+  console.log(`  -> Buyer successfully registered in DB! UserID: ${buyerUserId}`);
 
-  // --- Step 4: Bob lists a ticket for P2P resale ---
-  const resaleTicketId = 'tkt_evt1_5';
-  const resalePrice = 175;
-  console.log(`\n[4/5] Bob listing ticket ${resaleTicketId} for P2P resale at $${resalePrice}...`);
+  // --- Step 2: Register New Seller ---
+  console.log(`\n[2/5] Registering new Seller account (${sellerEmail})...`);
+  const sellerReg = await request('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: sellerEmail,
+      password,
+      name: 'Dynamic Seller',
+      role: 'SELLER',
+    }),
+  });
+  assert.strictEqual(sellerReg.status, 201, `Seller registration failed: ${JSON.stringify(sellerReg.data)}`);
+  assert.strictEqual(sellerReg.data.success, true);
+  assert.strictEqual(sellerReg.data.role, 'SELLER');
+  assert.strictEqual(sellerReg.data.email, sellerEmail);
+  assert.ok(sellerReg.data.token, 'Seller JWT token should be returned');
+  const sellerUserId = sellerReg.data.user_id;
+  console.log(`  -> Seller successfully registered in DB! UserID: ${sellerUserId}`);
+
+  // --- Step 3: Authenticate Buyer via Login endpoint ---
+  console.log(`\n[3/5] Authenticating Buyer via Login endpoint (POST /api/auth/login)...`);
+  const buyerLogin = await request('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: buyerEmail,
+      password,
+    }),
+  });
+  assert.strictEqual(buyerLogin.status, 201, `Buyer login failed: ${JSON.stringify(buyerLogin.data)}`);
+  assert.strictEqual(buyerLogin.data.success, true);
+  assert.strictEqual(buyerLogin.data.user_id, buyerUserId);
+  assert.ok(buyerLogin.data.token, 'Fresh JWT token issued upon login');
+  console.log(`  -> Buyer authenticated with fresh JWT signature!`);
+
+  // --- Step 4: Seller lists a ticket for P2P resale ---
+  const resaleTicketId = 'tkt_evt1_8';
+  const resalePrice = 195;
+  console.log(`\n[4/5] Seller listing ticket ${resaleTicketId} for P2P resale at $${resalePrice}...`);
   const listRes = await request('/api/inventory/resale', {
     method: 'POST',
     body: JSON.stringify({
       ticket_id: resaleTicketId,
-      seller_id: bobRes.data.user_id,
+      seller_id: sellerUserId,
       resale_price: resalePrice,
       event_id: 'evt_1',
     }),
@@ -86,9 +100,9 @@ async function run() {
   assert.strictEqual(listRes.status, 201, `Resale listing failed: ${JSON.stringify(listRes.data)}`);
   assert.strictEqual(listRes.data.id, resaleTicketId);
   assert.strictEqual(listRes.data.is_resale, true);
-  assert.strictEqual(listRes.data.seller_id, bobRes.data.user_id);
+  assert.strictEqual(listRes.data.seller_id, sellerUserId);
   assert.strictEqual(Number(listRes.data.price), resalePrice);
-  console.log(`  -> Ticket ${resaleTicketId} listed for resale by Bob! Status: ${listRes.data.status}, Price: $${listRes.data.price}`);
+  console.log(`  -> Ticket ${resaleTicketId} listed for resale by seller! Status: ${listRes.data.status}, Price: $${listRes.data.price}`);
 
   // Verify it appears in public resale marketplace
   console.log('  -> Fetching public resale marketplace tickets (GET /api/inventory/resale)...');
@@ -98,15 +112,15 @@ async function run() {
   assert.ok(foundTicket, `Ticket ${resaleTicketId} should be in resale list`);
   console.log(`  -> Verified: Ticket ${resaleTicketId} is live on Fan-to-Fan marketplace!`);
 
-  // --- Step 5: Alice purchases Bob's resale ticket ---
-  console.log(`\n[5/5] Alice buying Bob's resale ticket (${resaleTicketId}) via Distributed Saga...`);
-  // 5a. Alice reserves hold
-  console.log(`  -> Alice reserving 600s hold on ${resaleTicketId}...`);
+  // --- Step 5: Buyer purchases Seller's resale ticket ---
+  console.log(`\n[5/5] Buyer purchasing resale ticket (${resaleTicketId}) via Distributed Saga...`);
+  // 5a. Buyer reserves hold
+  console.log(`  -> Buyer reserving 600s hold on ${resaleTicketId}...`);
   const holdRes = await request('/api/inventory/hold', {
     method: 'POST',
     body: JSON.stringify({
       ticket_id: resaleTicketId,
-      user_id: aliceRes.data.user_id,
+      user_id: buyerUserId,
       hold_duration_seconds: 600,
       event_id: 'evt_1',
     }),
@@ -114,12 +128,12 @@ async function run() {
   assert.strictEqual(holdRes.status, 201, `Hold failed: ${JSON.stringify(holdRes.data)}`);
   assert.strictEqual(holdRes.data.success, true);
 
-  // 5b. Alice places order
-  console.log(`  -> Alice submitting order for $${resalePrice}...`);
+  // 5b. Buyer places order
+  console.log(`  -> Buyer submitting order for $${resalePrice}...`);
   const orderRes = await request('/api/orders', {
     method: 'POST',
     body: JSON.stringify({
-      user_id: aliceRes.data.user_id,
+      user_id: buyerUserId,
       ticket_id: resaleTicketId,
       event_id: 'evt_1',
       amount: resalePrice,
@@ -152,15 +166,15 @@ async function run() {
   assert.ok(!foundAfter, `Sold resale ticket ${resaleTicketId} must NOT appear in available resale listings`);
   console.log(`  -> Verified: Resale ticket ${resaleTicketId} removed from available resale listings.`);
 
-  // 5e. Verify Alice's order history contains this order
-  const aliceOrdersRes = await request(`/api/orders/user/${aliceRes.data.user_id}`);
-  assert.strictEqual(aliceOrdersRes.status, 200);
-  const aliceOrder = aliceOrdersRes.data.orders.find((o) => o.id === orderId);
-  assert.ok(aliceOrder, `Order ${orderId} should appear in Alice's order history`);
-  console.log(`  -> Verified: Order ${orderId} visible in Alice's personal ticket vault!`);
+  // 5e. Verify Buyer's order history contains this order
+  const buyerOrdersRes = await request(`/api/orders/user/${buyerUserId}`);
+  assert.strictEqual(buyerOrdersRes.status, 200);
+  const buyerOrder = buyerOrdersRes.data.orders.find((o) => o.id === orderId);
+  assert.ok(buyerOrder, `Order ${orderId} should appear in Buyer's order history`);
+  console.log(`  -> Verified: Order ${orderId} visible in Buyer's personal ticket vault!`);
 
   console.log('\n======================================================');
-  console.log(' SUCCESS: All JWT Auth & P2P Resale flow checks PASSED!');
+  console.log(' SUCCESS: All Dynamic Registration & Resale tests PASSED!');
   console.log('======================================================\n');
 }
 

@@ -17,29 +17,7 @@ export class AuthService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Seed initial users if table is empty
-    const count = await this.userRepo.count();
-    if (count === 0) {
-      this.logger.log('Seeding demo users into PostgreSQL users table...');
-      const demoPasswordHash = bcrypt.hashSync('password123', 10);
-      await this.userRepo.save([
-        {
-          id: 'usr_buyer_1',
-          email: 'buyer@example.com',
-          passwordHash: demoPasswordHash,
-          name: 'Alice Buyer',
-          role: 'BUYER',
-        },
-        {
-          id: 'usr_seller_1',
-          email: 'seller@example.com',
-          passwordHash: demoPasswordHash,
-          name: 'Bob Seller',
-          role: 'SELLER',
-        },
-      ]);
-      this.logger.log('Demo users successfully seeded in PostgreSQL.');
-    }
+    this.logger.log('AuthService initialized. Authentication relies strictly on real registered users in PostgreSQL.');
   }
 
   async register(data: { email: string; password: string; name: string; role?: string }) {
